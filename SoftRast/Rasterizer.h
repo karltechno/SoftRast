@@ -1,5 +1,6 @@
 #pragma once
 #include <kt/kt.h>
+#include <kt/Vec4.h>
 
 namespace kt
 {
@@ -19,8 +20,21 @@ constexpr uint32_t c_maxVaryings = 16;
 
 struct Transformed_Vert
 {
-	float zOverW;
-	float recipW;
+	Transformed_Vert(){}
+
+	union
+	{
+		kt::Vec4 transformedPos;
+		
+		struct  
+		{
+			float raster_x;
+			float raster_y;
+			float zOverW;
+			float recipW;
+		};
+	};
+
 	float varyings[c_maxVaryings];
 };
 
@@ -87,10 +101,8 @@ void ClearDepthBufferTest(DepthBuffer& _buffer);
 void FillScreenTest(Framebuffer& _buffer, uint8_t const color[3]);
 
 // Raster a tri (CCW winding)
-void RasterTriTest(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
-void RasterTriTest_Int(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
-
 void SetupAndRasterTriTest(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
+
 }
 
 }

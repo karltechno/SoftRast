@@ -38,176 +38,6 @@ void ClearDepthBufferTest(DepthBuffer& _buffer)
 	}
 }
 
-struct EdgeEq
-{
-	void Set(kt::Vec2 const& _v0, kt::Vec2 const& _v1)
-	{
-		ec = (-_v0.x * (_v1.y - _v0.y) + _v0.y * (_v1.x - _v0.x));
-		ex = (_v1.y - _v0.y);
-		ey = (_v0.x - _v1.x);
-	}
-
-	float Eval(int32_t _x, int32_t _y)
-	{
-		return ec + ex * _x + ey * _y;
-	}
-
-	float ec;
-	float ex;
-	float ey;
-};
-
-
-float EvalEdge(kt::Vec2 const& _v0, kt::Vec2 const& _v1, int32_t _x, int32_t _y)
-{
-	float a = (_v1.x - _v0.x) * (_y - _v0.y);
-	float b = (_v1.y - _v0.y) * (_x - _v0.x);
-	return b - a;
-}
-
-
-void RasterTriTest(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2)
-{
-	kt::Vec2 bboxMin(FLT_MAX);
-	kt::Vec2 bboxMax(-FLT_MAX);
-
-	kt::Vec2 const halfScreenCoords(_buffer.width*0.5f, _buffer.height*0.5f);
-
-	kt::Vec4 v0_clip = _mtx * kt::Vec4(_v0, 1.0f);
-	kt::Vec4 v1_clip = _mtx * kt::Vec4(_v1, 1.0f);
-	kt::Vec4 v2_clip = _mtx * kt::Vec4(_v2, 1.0f);
-
-	auto logV4 = [](kt::Vec4 const& v)
-	{
-		KT_LOG_INFO("%.2f, %.2f, %.2f, %.2f", v[0], v[1], v[2], v[3]);
-	};
-
-	// w = recip(w) (1/z)
-	v0_clip.w = 1.0f / v0_clip.w;
-	v1_clip.w = 1.0f / v1_clip.w;
-	v2_clip.w = 1.0f / v2_clip.w;
-
-	v0_clip.z *= v0_clip.w;
-	v1_clip.z *= v1_clip.w;
-	v2_clip.z *= v2_clip.w;
-
-	kt::Vec2 const v0ndc = kt::Vec2(v0_clip.w * v0_clip.x, v0_clip.w * v0_clip.y);
-	kt::Vec2 const v1ndc = kt::Vec2(v1_clip.w * v1_clip.x, v1_clip.w * v1_clip.y);
-	kt::Vec2 const v2ndc = kt::Vec2(v2_clip.w * v2_clip.x, v2_clip.w * v2_clip.y);
-
-	kt::Vec2 const v0raster = kt::Vec2(v0_clip.w * v0_clip.x * halfScreenCoords.x + halfScreenCoords.x, v0_clip.w * v0_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-
-	kt::Vec2 const edge0 = v1raster - v0raster;
-	kt::Vec2 const edge1 = v2raster - v1raster;
-	kt::Vec2 const edge2 = v0raster - v2raster;
-
-	EdgeEq e0, e1, e2;
-	e0.Set(v0raster, v1raster);
-	e1.Set(v1raster, v2raster);
-	e2.Set(v2raster, v0raster);
-
-	bboxMin.x = kt::Min(kt::Min(v0raster.x, v1raster.x), v2raster.x);
-	bboxMax.x = kt::Max(kt::Max(v0raster.x, v1raster.x), v2raster.x);
-
-	bboxMin.y = kt::Min(kt::Min(v0raster.y, v1raster.y), v2raster.y);
-	bboxMax.y = kt::Max(kt::Max(v0raster.y, v1raster.y), v2raster.y);
-
-	bboxMin = kt::Clamp(bboxMin, kt::Vec2(0.0f), kt::Vec2((float)_buffer.width - 1, (float)_buffer.height - 1));
-	bboxMax = kt::Clamp(bboxMax, kt::Vec2(0.0f), kt::Vec2((float)_buffer.width - 1, (float)_buffer.height - 1));
-
-	int32_t xmin, ymin;
-	int32_t xmax, ymax;
-
-	xmin = (int32_t)bboxMin.x;
-	ymin = (int32_t)bboxMin.y;
-	xmax = (int32_t)bboxMax.x;
-	ymax = (int32_t)bboxMax.y;
-
-	float const triArea2 = kt::Cross(v2raster - v0raster, v1raster - v0raster);
-
-	if (triArea2 <= 0.0f)
-	{
-		return;
-	}
-
-	float const recipTriArea2 = 1.0f / triArea2;
-
-	for (int32_t y = ymin; y <= ymax; ++y)
-	{
-		for (int32_t x = xmin; x <= xmax; ++x)
-		{
-			bool inTri = true;
-#if 1
-			float const e0Eval = e0.Eval(x, y);
-			float const e1Eval = e1.Eval(x, y);
-			float const e2Eval = e2.Eval(x, y);
-
-			inTri &= (e0Eval == 0.0f) ? (edge0.y == 0.0f && edge0.x > 0.0f) || edge0.y > 0.0f : (e0Eval > 0.0f);
-			inTri &= (e1Eval == 0.0f) ? (edge1.y == 0.0f && edge1.x > 0.0f) || edge1.y > 0.0f : (e1Eval > 0.0f);
-			inTri &= (e2Eval == 0.0f) ? (edge2.y == 0.0f && edge2.x > 0.0f) || edge2.y > 0.0f : (e2Eval > 0.0f);
-
-#else
-			float const eval0 = EvalEdge(v0raster, v1raster, x, y);
-			float const eval1 = EvalEdge(v1raster, v2raster, x, y);
-			float const eval2 = EvalEdge(v2raster, v0raster, x, y);
-			inTri = eval0 >= 0.0f && eval1 >= 0.0f && eval2 >= 0.0f;
-#endif
-			uint8_t* pixel = _buffer.ptr + y * _buffer.width * 3 + x * 3;
-
-			if (inTri)
-			{
-				float const baryV0 = e1Eval * recipTriArea2;
-				float const baryV1 = e2Eval * recipTriArea2;
-				float const baryV2 = 1.0f - baryV0 - baryV1;
-
-				float const recipZ = baryV0 * v0_clip.z + baryV1 * v1_clip.z + baryV2 * v2_clip.z;
-
-				float const e0_persp = e0Eval * v2_clip.w;
-				float const e1_persp = e1Eval * v0_clip.w;
-				float const e2_persp = e2Eval * v1_clip.w;
-
-				float const recip_persp_bary = 1.0f / (e0_persp + e1_persp + e2_persp);
-
-				float const v0_persp = e1_persp * recip_persp_bary;
-				float const v1_persp = e2_persp * recip_persp_bary;
-				float const v2_persp = 1.0f - v1_persp - v0_persp;
-
-				float* depthPtr = _depthBuffer.At(x, y);
-
-				if (recipZ < 0.0f)
-				{
-					volatile int asdasd = 5;
-					asdasd = 2;
-				}
-
-				if (*depthPtr > recipZ && recipZ > 0.0f)
-				{
-					*depthPtr = recipZ;
-					uint8_t thecol = (uint8_t)(255 * (1.0f - fmodf(kt::Min(v2_persp, kt::Min(v0_persp, v1_persp)), 0.1f)));
-
-#if 0
-					pixel[0] = (uint8_t)(baryV0 * 255);
-					pixel[1] = (uint8_t)(baryV1 * 255);
-					pixel[2] = (uint8_t)(baryV2 * 255);
-#elif 1
-					pixel[0] = (uint8_t)(v0_persp * 255);
-					pixel[1] = (uint8_t)(v1_persp * 255);
-					pixel[2] = (uint8_t)(v2_persp * 255);
-#else
-					pixel[0] = thecol;
-					pixel[1] = thecol;
-					pixel[2] = thecol;
-#endif
-
-
-				}
-			}
-		}
-	}
-}
-
 constexpr int32_t c_subPixelBits = 4;
 constexpr int32_t c_subPixelStep = 1 << c_subPixelBits;
 constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
@@ -257,133 +87,6 @@ struct EdgeConstants
 
 	int32_t eval;
 };
-
-void RasterTriTest_Int(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2)
-{
-	kt::Vec2 const halfScreenCoords(_buffer.width*0.5f, _buffer.height*0.5f);
-
-	kt::Vec4 v0_clip = _mtx * kt::Vec4(_v0, 1.0f);
-	kt::Vec4 v1_clip = _mtx * kt::Vec4(_v1, 1.0f);
-	kt::Vec4 v2_clip = _mtx * kt::Vec4(_v2, 1.0f);
-
-	// w = recip(w) (1/z)
-	v0_clip.w = 1.0f / v0_clip.w;
-	v1_clip.w = 1.0f / v1_clip.w;
-	v2_clip.w = 1.0f / v2_clip.w;
-
-	v0_clip.z *= v0_clip.w;
-	v1_clip.z *= v1_clip.w;
-	v2_clip.z *= v2_clip.w;
-
-	kt::Vec2 const v0raster = kt::Vec2(v0_clip.w * v0_clip.x * halfScreenCoords.x + halfScreenCoords.x, v0_clip.w * v0_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
-
-	int32_t const v0_fp[2] = { int32_t(v0raster.x * c_subPixelStep + 0.5f), int32_t(v0raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v1_fp[2] = { int32_t(v1raster.x * c_subPixelStep + 0.5f), int32_t(v1raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v2_fp[2] = { int32_t(v2raster.x * c_subPixelStep + 0.5f), int32_t(v2raster.y * c_subPixelStep + 0.5f) };
-
-	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
-	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
-	int32_t const e2_fp[2] = { v0_fp[0] - v2_fp[0], v0_fp[1] - v2_fp[1] };
-
-	int32_t xmin, ymin;
-	int32_t xmax, ymax;
-
-	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
-
-	xmax = kt::Min((int32_t)_buffer.width, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymax = kt::Min((int32_t)_buffer.height, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
-
-	EdgeConstants e0_edge_eq, e1_edge_eq, e2_edge_eq;
-	e0_edge_eq.Set(v0_fp, v1_fp, xmin, ymin);
-	e1_edge_eq.Set(v1_fp, v2_fp, xmin, ymin);
-	e2_edge_eq.Set(v2_fp, v0_fp, xmin, ymin);
-
-	int32_t const triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
-
-	if (triArea2_fp <= 0.0f)
-	{
-		return;
-	}
-
-	float const recipTriArea2 = 1.0f / triArea2_fp;
-
-	for (int32_t y = ymin; y < ymax; ++y)
-	{
-		for (int32_t x = xmin; x < xmax; ++x)
-		{
-			bool inTri = true;
-#if 1
-			int32_t const e0Eval = e0_edge_eq.eval;
-			int32_t const e1Eval = e1_edge_eq.eval;
-			int32_t const e2Eval = e2_edge_eq.eval;
-
-			inTri &= (e0Eval >= 0);
-			inTri &= (e1Eval >= 0);
-			inTri &= (e2Eval >= 0);
-
-#else
-			float const eval0 = EvalEdge(v0raster, v1raster, x, y);
-			float const eval1 = EvalEdge(v1raster, v2raster, x, y);
-			float const eval2 = EvalEdge(v2raster, v0raster, x, y);
-			inTri = eval0 >= 0.0f && eval1 >= 0.0f && eval2 >= 0.0f;
-#endif
-			uint8_t* pixel = _buffer.ptr + y * _buffer.width * 3 + x * 3;
-
-			if (inTri)
-			{
-				float const baryV0 = e1Eval * recipTriArea2;
-				float const baryV1 = e2Eval * recipTriArea2;
-				float const baryV2 = 1.0f - baryV0 - baryV1;
-
-				float const recipZ = baryV0 * v0_clip.z + baryV1 * v1_clip.z + baryV2 * v2_clip.z;
-
-				float const e0_persp = e0Eval * v2_clip.w;
-				float const e1_persp = e1Eval * v0_clip.w;
-				float const e2_persp = e2Eval * v1_clip.w;
-
-				float const recip_persp_bary = 1.0f / (e0_persp + e1_persp + e2_persp);
-
-				float const v0_persp = e1_persp * recip_persp_bary;
-				float const v1_persp = e2_persp * recip_persp_bary;
-				float const v2_persp = 1.0f - v1_persp - v0_persp;
-
-				float* depthPtr = _depthBuffer.At(x, y);
-
-				if (*depthPtr > recipZ && recipZ > 0.0f)
-				{
-					*depthPtr = recipZ;
-					uint8_t thecol = (uint8_t)(255 * (1.0f - fmodf(kt::Min(v2_persp, kt::Min(v0_persp, v1_persp)), 0.1f)));
-
-#if 0
-					pixel[0] = (uint8_t)(baryV0 * 255);
-					pixel[1] = (uint8_t)(baryV1 * 255);
-					pixel[2] = (uint8_t)(baryV2 * 255);
-#elif 1
-					pixel[0] = (uint8_t)(v0_persp * 255);
-					pixel[1] = (uint8_t)(v1_persp * 255);
-					pixel[2] = (uint8_t)(v2_persp * 255);
-#else
-					pixel[0] = thecol;
-					pixel[1] = thecol;
-					pixel[2] = thecol;
-#endif
-
-
-				}
-			}
-
-			e0_edge_eq.IncX();
-			e1_edge_eq.IncX();
-			e2_edge_eq.IncX();
-		}
-		e0_edge_eq.NextLine();
-		e1_edge_eq.NextLine();
-		e2_edge_eq.NextLine();
-	}
-}
 
 static void RasterTransformedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer, Transformed_Tri const& _tri)
 {
@@ -440,14 +143,21 @@ static void RasterTransformedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer
 					*depthPtr = recipZ;
 					uint8_t thecol = (uint8_t)(255 * (1.0f - fmodf(kt::Min(v2_persp, kt::Min(v0_persp, v1_persp)), 0.15f)));
 
+					float const* vary0 = _tri.verts[0].varyings;
+					float const* vary1 = _tri.verts[1].varyings;
+					float const* vary2 = _tri.verts[2].varyings;
+
 #if 0
 					pixel[0] = (uint8_t)(baryV0 * 255);
 					pixel[1] = (uint8_t)(baryV1 * 255);
 					pixel[2] = (uint8_t)(baryV2 * 255);
 #elif 1
-					pixel[0] = (uint8_t)(v0_persp * 255);
-					pixel[1] = (uint8_t)(v1_persp * 255);
-					pixel[2] = (uint8_t)(v2_persp * 255);
+					//pixel[0] = (uint8_t)(v0_persp * 255);
+					//pixel[1] = (uint8_t)(v1_persp * 255);
+					//pixel[2] = (uint8_t)(v2_persp * 255);
+					pixel[0] = uint8_t((vary0[0] * v0_persp + vary1[0] * v1_persp + vary2[0] * v2_persp) * 255.0f);
+					pixel[1] = uint8_t((vary0[1] * v0_persp + vary1[1] * v1_persp + vary2[1] * v2_persp) * 255.0f);
+					pixel[2] = uint8_t((vary0[2] * v0_persp + vary1[2] * v1_persp + vary2[2] * v2_persp) * 255.0f);
 #else
 					pixel[0] = thecol;
 					pixel[1] = thecol;
@@ -505,22 +215,102 @@ static void TransformAndClip(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 
 
 }
 
-void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::Vec4 o_verts[CLIP_OUT_TRI_BUFF_SIZE], uint32_t& o_numOutTris)
+static bool SetupTri(Transformed_Vert const& _v0, Transformed_Vert const& _v1, Transformed_Vert const& _v2, Transformed_Tri& o_tri, uint32_t const _screenWidth, uint32_t const _screenHeight)
+{
+	kt::Vec2 const halfScreenCoords(_screenWidth*0.5f, _screenHeight*0.5f);
+
+	kt::Vec4 v0_clip = _v0.transformedPos;
+	kt::Vec4 v1_clip = _v1.transformedPos;
+	kt::Vec4 v2_clip = _v2.transformedPos;
+
+	// w = recip(w) (1/z)
+	v0_clip.w = 1.0f / v0_clip.w;
+	v1_clip.w = 1.0f / v1_clip.w;
+	v2_clip.w = 1.0f / v2_clip.w;
+
+	v0_clip.z *= v0_clip.w;
+	v1_clip.z *= v1_clip.w;
+	v2_clip.z *= v2_clip.w;
+
+	kt::Vec2 const v0raster = kt::Vec2(v0_clip.w * v0_clip.x * halfScreenCoords.x + halfScreenCoords.x, v0_clip.w * v0_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
+	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
+	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
+
+	int32_t const v0_fp[2] = { int32_t(v0raster.x * c_subPixelStep + 0.5f), int32_t(v0raster.y * c_subPixelStep + 0.5f) };
+	int32_t const v1_fp[2] = { int32_t(v1raster.x * c_subPixelStep + 0.5f), int32_t(v1raster.y * c_subPixelStep + 0.5f) };
+	int32_t const v2_fp[2] = { int32_t(v2raster.x * c_subPixelStep + 0.5f), int32_t(v2raster.y * c_subPixelStep + 0.5f) };
+
+	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
+	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
+	int32_t const e2_fp[2] = { v0_fp[0] - v2_fp[0], v0_fp[1] - v2_fp[1] };
+
+	int32_t xmin, ymin;
+	int32_t xmax, ymax;
+
+	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
+	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+
+	xmax = kt::Min((int32_t)_screenWidth, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
+	ymax = kt::Min((int32_t)_screenHeight, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+
+	int64_t triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
+
+	if (triArea2_fp <= 0.0f)
+	{
+		return false;
+	}
+
+
+	o_tri.xmin = xmin;
+	o_tri.xmax = xmax;
+	o_tri.ymin = ymin;
+	o_tri.ymax = ymax;
+
+	o_tri.halfRecipTriArea_fp = 1.0f / triArea2_fp;
+
+	o_tri.v0_fp[0] = v0_fp[0];
+	o_tri.v0_fp[1] = v0_fp[1];
+
+	o_tri.v1_fp[0] = v1_fp[0];
+	o_tri.v1_fp[1] = v1_fp[1];
+
+	o_tri.v2_fp[0] = v2_fp[0];
+	o_tri.v2_fp[1] = v2_fp[1];
+
+	o_tri.verts[0].zOverW = v0_clip.z;
+	o_tri.verts[1].zOverW = v1_clip.z;
+	o_tri.verts[2].zOverW = v2_clip.z;
+
+	o_tri.verts[0].recipW = v0_clip.w;
+	o_tri.verts[1].recipW = v1_clip.w;
+	o_tri.verts[2].recipW = v2_clip.w;
+
+	memcpy(o_tri.verts[0].varyings, _v0.varyings, sizeof(_v0.varyings));
+	memcpy(o_tri.verts[1].varyings, _v1.varyings, sizeof(_v1.varyings));
+	memcpy(o_tri.verts[2].varyings, _v2.varyings, sizeof(_v2.varyings));
+	return true;
+}
+
+void ClipAndSetup(Transformed_Vert clipSpaceVerts[3], Transformed_Tri o_tris[CLIP_OUT_TRI_BUFF_SIZE], uint32_t& o_numOutTris)
 {
 	uint32_t maskOr = 0;
 
-	uint8_t clipv0 = ComputeClipMask(_v0);
-	uint8_t clipv1 = ComputeClipMask(_v1);
-	uint8_t clipv2 = ComputeClipMask(_v2);
+	uint8_t clipv0 = ComputeClipMask(clipSpaceVerts[0].transformedPos);
+	uint8_t clipv1 = ComputeClipMask(clipSpaceVerts[1].transformedPos);
+	uint8_t clipv2 = ComputeClipMask(clipSpaceVerts[2].transformedPos);
 
 	maskOr = clipv0 | clipv1 | clipv2;
 
 	if (maskOr == 0)
 	{
-		o_verts[0] = _v0;
-		o_verts[1] = _v1;
-		o_verts[2] = _v2;
-		o_numOutTris = 1;
+		if (SetupTri(clipSpaceVerts[0], clipSpaceVerts[1], clipSpaceVerts[2], o_tris[0], 1280, 720)) // hey dont hardcode that!
+		{
+			o_numOutTris = 1;
+		}
+		else
+		{
+			o_numOutTris = 0;
+		}
 		return;
 	}
 
@@ -543,12 +333,19 @@ void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::
 		{ 0.0f, 0.0f, -1.0f, 1.0f }, // Z_Far
 	};
 
-	kt::Vec4 input[CLIP_BUFFER_SIZE];
-	input[0] = _v0;
-	input[1] = _v1;
-	input[2] = _v2;
+	// Todo: don't copy all this stuff around.
 
-	kt::Vec4 output[CLIP_BUFFER_SIZE];
+	auto copyVert = [](Transformed_Vert& out, Transformed_Vert const& _in) 
+	{
+		memcpy(&out, &_in, sizeof(Transformed_Vert));
+	};
+
+	Transformed_Vert input[CLIP_BUFFER_SIZE];
+	copyVert(input[0], clipSpaceVerts[0]);
+	copyVert(input[1], clipSpaceVerts[1]);
+	copyVert(input[2], clipSpaceVerts[2]);
+
+	Transformed_Vert output[CLIP_BUFFER_SIZE];
 
 	uint32_t numInputVerts = 3;
 	uint32_t numOutputVerts = 0;
@@ -560,20 +357,20 @@ void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::
 
 		kt::Vec4 const& clipPlane = c_clipPlanes[clipIdx];
 
-		kt::Vec4 const* v0 = &input[numInputVerts - 1];
-		float v0_dot = kt::Dot(clipPlane, *v0);
+		Transformed_Vert const* v0 = &input[numInputVerts - 1];
+		float v0_dot = kt::Dot(clipPlane, v0->transformedPos);
 
 		for (uint32_t nextClipVertIdx = 0; nextClipVertIdx < numInputVerts; ++nextClipVertIdx)
 		{
-			kt::Vec4 const*const v1 = &input[nextClipVertIdx];
-			float const v1_dot = kt::Dot(clipPlane, *v1);
+			Transformed_Vert const*const v1 = &input[nextClipVertIdx];
+			float const v1_dot = kt::Dot(clipPlane, v1->transformedPos);
 			bool const v0_inside = v0_dot >= 0.0f;
 			bool const v1_inside = v1_dot >= 0.0f;
 
 			if (v0_inside)
 			{
 				KT_ASSERT(numOutputVerts < CLIP_BUFFER_SIZE);
-				output[numOutputVerts++] = *v0;
+				copyVert(output[numOutputVerts++], *v0);
 			}
 
 			if (v0_inside ^ v1_inside)
@@ -582,13 +379,24 @@ void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::
 				{
 					KT_ASSERT(numOutputVerts < CLIP_BUFFER_SIZE);
 					float const tInterp = v1_dot / (v1_dot - v0_dot);
-					output[numOutputVerts++] = kt::Lerp(*v1, *v0, tInterp);
+					Transformed_Vert* out = &output[numOutputVerts++];
+					out->transformedPos = kt::Lerp(v1->transformedPos, v0->transformedPos, tInterp);
+
+					for (uint32_t varI = 0; varI < c_maxVaryings; ++varI)
+					{
+						out->varyings[varI] = kt::Lerp(v1->varyings[varI], v0->varyings[varI], tInterp);
+					}
 				}
 				else
 				{
 					KT_ASSERT(numOutputVerts < CLIP_BUFFER_SIZE);
 					float const tInterp = v0_dot / (v0_dot - v1_dot);
-					output[numOutputVerts++] = kt::Lerp(*v0, *v1, tInterp);
+					Transformed_Vert* out = &output[numOutputVerts++];
+					out->transformedPos = kt::Lerp(v0->transformedPos, v1->transformedPos, tInterp);
+					for (uint32_t varI = 0; varI < c_maxVaryings; ++varI)
+					{
+						out->varyings[varI] = kt::Lerp(v0->varyings[varI], v1->varyings[varI], tInterp);
+					}
 				}
 			}
 
@@ -602,7 +410,7 @@ void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::
 			return;
 		}
 
-		memcpy(input, output, sizeof(kt::Vec4) * numOutputVerts); // this is slow - should have pointer indirection into buffers so no copy is needed.
+		memcpy(input, output, sizeof(Transformed_Vert) * numOutputVerts); // this is slow - should have pointer indirection into buffers so no copy is needed.
 		numInputVerts = numOutputVerts;
 		numOutputVerts = 0;
 	} while (maskOr);
@@ -611,18 +419,15 @@ void ClipTri(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::
 	o_numOutTris = 0;
 	for (uint32_t i = 2; i < numInputVerts; ++i)
 	{
-		KT_ASSERT(((o_numOutTris + 1) * 3) <= CLIP_OUT_TRI_BUFF_SIZE);
-		o_verts[o_numOutTris * 3] = input[0];
-		o_verts[o_numOutTris * 3 + 1] = input[i - 1];
-		o_verts[o_numOutTris * 3 + 2] = input[i];
-		++o_numOutTris;
+		KT_ASSERT(o_numOutTris <= CLIP_OUT_TRI_BUFF_SIZE);
+		Transformed_Tri& tri = o_tris[o_numOutTris];
+		if (SetupTri(input[0], input[i - 1], input[i], o_tris[o_numOutTris], 1280, 720)) // ahhh hardcoded
+		{
+			++o_numOutTris;
+		}
 	}
 }
 
-void TransformAndClip(kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2, kt::Vec4 o_verts[CLIP_OUT_TRI_BUFF_SIZE], uint32_t& o_numOutTris)
-{
-
-}
 
 void RasterClippedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Vec4 const& _v0, kt::Vec4 const& _v1, kt::Vec4 const& _v2)
 {
@@ -699,20 +504,32 @@ void RasterClippedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Vec4 
 
 void SetupAndRasterTriTest(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2)
 {
-	kt::Vec2 const halfScreenCoords(_buffer.width*0.5f, _buffer.height*0.5f);
-
-	kt::Vec4 v0_clip = _mtx * kt::Vec4(_v0, 1.0f);
-	kt::Vec4 v1_clip = _mtx * kt::Vec4(_v1, 1.0f);
-	kt::Vec4 v2_clip = _mtx * kt::Vec4(_v2, 1.0f);
-
-	kt::Vec4 outClipVerts[CLIP_OUT_TRI_BUFF_SIZE];
+	Transformed_Tri outTris[CLIP_OUT_TRI_BUFF_SIZE];
 	uint32_t numClipTris;
+	
+	Transformed_Vert verts[3];
+	verts[0].transformedPos = _mtx * kt::Vec4(_v0, 1.0f);
+	verts[1].transformedPos = _mtx * kt::Vec4(_v1, 1.0f);
+	verts[2].transformedPos = _mtx * kt::Vec4(_v2, 1.0f);
 
-	ClipTri(v0_clip, v1_clip, v2_clip, outClipVerts, numClipTris);
+	verts[0].varyings[0] = 1.0f;
+	verts[0].varyings[1] = 0.0f;
+	verts[0].varyings[2] = 0.0f;
+
+	verts[1].varyings[0] = 0.0f;
+	verts[1].varyings[1] = 1.0f;
+	verts[1].varyings[2] = 0.0f;
+
+	verts[2].varyings[0] = 0.0f;
+	verts[2].varyings[1] = 0.0f;
+	verts[2].varyings[2] = 1.0f;
+
+
+	ClipAndSetup(verts, outTris, numClipTris);
 
 	for (uint32_t i = 0; i < numClipTris; ++i)
 	{
-		RasterClippedTri(_buffer, _depthBuffer, outClipVerts[i * 3], outClipVerts[i * 3 + 1], outClipVerts[i * 3 + 2]);
+		RasterTransformedTri(_buffer, _depthBuffer, outTris[i]);
 	}
 
 #if 0
