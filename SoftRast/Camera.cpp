@@ -50,6 +50,7 @@ kt::Mat4 const& Camera::GetProjectionMatrix() const
 
 void FreeCamController::SetPos(kt::Vec3 const& _pos)
 {
+	m_camPos = _pos;
 	m_camera.SetCameraPos(_pos);
 }
 
