@@ -4,6 +4,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+namespace sr
+{
+
 
 LRESULT CALLBACK Window_Win32::WndProcHook(HWND _hwnd, UINT _msg, WPARAM _wparam, LPARAM _lparam)
 {
@@ -68,19 +71,19 @@ void Window_Win32::Shutdown()
 {
 	if (m_hwnd)
 	{
-		ReleaseDC(m_hwnd, m_windowHDC);
-		DestroyWindow(m_hwnd);
+		::ReleaseDC(m_hwnd, m_windowHDC);
+		::DestroyWindow(m_hwnd);
 	}
 
 	if (m_backBufferHDC)
 	{
-		DeleteDC(m_backBufferHDC);
+		::DeleteDC(m_backBufferHDC);
 	}
 }
 
 void Window_Win32::Flip()
 {
-	// Swizle back buffer rgb -> bgr
+	// Swizzle back buffer rgb -> bgr
 	for (uint32_t i = 0; i < m_height; ++i)
 	{
 		for (uint32_t j = 0; j < m_width; ++j)
@@ -92,7 +95,7 @@ void Window_Win32::Flip()
 		}
 	}
 
-	BOOL ok = BitBlt(m_windowHDC, 0, 0, m_width, m_height, m_backBufferHDC, 0, 0, SRCCOPY);
+	BOOL ok = ::BitBlt(m_windowHDC, 0, 0, m_width, m_height, m_backBufferHDC, 0, 0, SRCCOPY);
 	KT_ASSERT(ok == TRUE);
 }
 
@@ -144,7 +147,7 @@ bool Window_Win32::InitWindow(char const* _name, uint32_t _height, uint32_t _wid
 		return false;
 	}
 
-	ShowWindow((HWND)m_hwnd, SW_SHOW);
+	::ShowWindow((HWND)m_hwnd, SW_SHOW);
 	return true;
 }
 
@@ -160,15 +163,16 @@ bool Window_Win32::InitBackBuffer(uint32_t _height, uint32_t _width)
 	bmi.bmiHeader.biBitCount = 24;
 	bmi.bmiHeader.biCompression = BI_RGB;
 	
-	m_windowHDC = GetDC(m_hwnd);
-	m_backBufferHDC = CreateCompatibleDC(m_windowHDC);
+	m_windowHDC = ::GetDC(m_hwnd);
+	m_backBufferHDC = ::CreateCompatibleDC(m_windowHDC);
 	KT_ASSERT(m_backBufferHDC);
 
-	m_drawDibSection = CreateDIBSection(m_windowHDC, &bmi, DIB_RGB_COLORS, &m_backBufferBitmapPtr, 0, 0);
+	m_drawDibSection = ::CreateDIBSection(m_windowHDC, &bmi, DIB_RGB_COLORS, &m_backBufferBitmapPtr, 0, 0);
 	KT_ASSERT(m_drawDibSection);
-	SelectObject(m_backBufferHDC, m_drawDibSection);
+	::SelectObject(m_backBufferHDC, m_drawDibSection);
 
 	Flip();
 	return true;
 }
 
+}

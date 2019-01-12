@@ -5,6 +5,9 @@
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 
+namespace sr
+{
+
 class Window_Win32
 {
 public:
@@ -21,6 +24,8 @@ public:
 
 	uint32_t Height() const;
 	uint32_t Width() const;
+
+	HWND Nwh() { return m_hwnd; }
 
 private:
 	bool InitWindow(char const* _name, uint32_t _height, uint32_t _width);
@@ -41,3 +46,5 @@ private:
 
 	bool m_wantsQuit = false;
 };
+
+}
