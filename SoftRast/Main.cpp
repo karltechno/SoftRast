@@ -53,10 +53,10 @@ int main(int argc, char** argv)
 	proj.m_farPlane = 10000.0f;
 
 	controller.SetProjectionParams(proj);
-	controller.SetPos({ 15.0f, 15.0f, 15.0f });
+	controller.SetPos({ 0.0f, 0.0f, -2.0f });
 
 
-	kt::Vec3 eye = { 15.0f, 15.0f, 15.0f };
+	kt::Vec3 eye = { 75.0f, 75.0f, 75.0f };
 	kt::Mat4 fullMtx = perspMtx * kt::Mat4::LookAtLH(eye * 10.0f, -kt::Normalize(eye));
 	uint32_t logDtCounter = 0;
 
@@ -91,19 +91,19 @@ int main(int argc, char** argv)
 		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.75f, 0.0f, 10.0f), kt::Vec3(1.0f, 0.0f, 10.0f), kt::Vec3(0.0f, 0.25f, 10.0f));
 		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.5f, 0.0f, 15.0f), kt::Vec3(10.0f, 0.0f, 15.0f), kt::Vec3(0.0f, 0.5f, 15.0f));
 #else
-		for (sr::Obj::Mesh const& mesh : model.m_meshes)
-		{
-			if (mesh.m_indexType == sr::IndexType::u16)
-			{
-				DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-			}
-			else
-			{
-				DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-			}
-		}
+		//for (sr::Obj::Mesh const& mesh : model.m_meshes)
+		//{
+		//	if (mesh.m_indexType == sr::IndexType::u16)
+		//	{
+		//		DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
+		//	}
+		//	else
+		//	{
+		//		DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
+		//	}
+		//}
 
-		//Raster::SetupAndRasterTri(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
+		sr::Raster::SetupAndRasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
 #endif
 		
 		window.Flip();

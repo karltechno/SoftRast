@@ -17,13 +17,14 @@ namespace Raster
 void FillScreenTest(Framebuffer& _buffer, uint8_t const color[3])
 {
 	uint8_t* p = _buffer.ptr;
-	uint8_t* pEnd = _buffer.ptr + _buffer.width * _buffer.height * 3;
+	uint8_t* pEnd = _buffer.ptr + _buffer.width * _buffer.height * 4;
 
 	while (p != pEnd)
 	{
 		*p++ = color[0];
 		*p++ = color[1];
 		*p++ = color[2];
+		*p++ = 0xFF;
 	}
 }
 
@@ -80,8 +81,10 @@ struct EdgeConstants
 	}
 
 	int32_t c;
+
 	int32_t x;
 	int32_t y;
+
 
 	int32_t cur_base;
 
@@ -116,7 +119,7 @@ static void RasterTransformedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer
 			float const eval2 = EvalEdge(v2raster, v0raster, x, y);
 			inTri = eval0 >= 0.0f && eval1 >= 0.0f && eval2 >= 0.0f;
 #endif
-			uint8_t* pixel = _buffer.ptr + y * _buffer.width * 3 + x * 3;
+			uint8_t* pixel = _buffer.ptr + y * _buffer.width * 4 + x * 4;
 
 			if (inTri)
 			{
@@ -151,6 +154,7 @@ static void RasterTransformedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer
 					pixel[0] = (uint8_t)(baryV0 * 255);
 					pixel[1] = (uint8_t)(baryV1 * 255);
 					pixel[2] = (uint8_t)(baryV2 * 255);
+					pixel[3] = 0xFF;
 #elif 1
 					//pixel[0] = (uint8_t)(v0_persp * 255);
 					//pixel[1] = (uint8_t)(v1_persp * 255);
@@ -158,10 +162,12 @@ static void RasterTransformedTri(Framebuffer& _buffer, DepthBuffer& _depthBuffer
 					pixel[0] = uint8_t((vary0[0] * v0_persp + vary1[0] * v1_persp + vary2[0] * v2_persp) * 255.0f);
 					pixel[1] = uint8_t((vary0[1] * v0_persp + vary1[1] * v1_persp + vary2[1] * v2_persp) * 255.0f);
 					pixel[2] = uint8_t((vary0[2] * v0_persp + vary1[2] * v1_persp + vary2[2] * v2_persp) * 255.0f);
+					pixel[3] = 0xFF;
 #else
 					pixel[0] = thecol;
 					pixel[1] = thecol;
 					pixel[2] = thecol;
+					pixel[3] = 0xFF;
 #endif
 
 

@@ -84,16 +84,33 @@ void Window_Win32::Shutdown()
 void Window_Win32::Flip()
 {
 	// Swizzle back buffer rgb -> bgr
-	for (uint32_t i = 0; i < m_height; ++i)
+	uint8_t* ptr = (uint8_t*)m_backBufferBitmapPtr;
+	uint8_t* pEnd = ptr + m_width * m_height * 4;
+
+	uint32_t const reg_shift = 0x04040404;
+
+	__m256i const shufmask = _mm256_setr_epi8
+	(
+		1, 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 13, 12, 14, 15,
+		1, 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 13, 12, 14, 15
+	);
+
+	while (pEnd - ptr >= 32)
 	{
-		for (uint32_t j = 0; j < m_width; ++j)
-		{
-			uint8_t* pixel = (uint8_t*)m_backBufferBitmapPtr + (i * m_width * 3) + j * 3;
-			uint8_t p0 = pixel[0];
-			pixel[0] = pixel[2];
-			pixel[2] = p0;
-		}
+		__m256i const bgra_x8 = _mm256_loadu_si256((__m256i*)ptr);
+		__m256i const rgba_x8 = _mm256_shuffle_epi8(bgra_x8, shufmask);
+		_mm256_storeu_si256((__m256i*)ptr, rgba_x8);
+		ptr += 32;
 	}
+
+	while (ptr != pEnd)
+	{
+		uint8_t p0 = ptr[0];
+		ptr[0] = ptr[2];
+		ptr[2] = p0;
+		ptr += 4;
+	}
+
 
 	BOOL ok = ::BitBlt(m_windowHDC, 0, 0, m_width, m_height, m_backBufferHDC, 0, 0, SRCCOPY);
 	KT_ASSERT(ok == TRUE);
@@ -160,7 +177,7 @@ bool Window_Win32::InitBackBuffer(uint32_t _height, uint32_t _width)
 	bmi.bmiHeader.biWidth = (LONG)_width;
 	bmi.bmiHeader.biHeight = -(LONG)_height; // flip so 0,0 is top
 	bmi.bmiHeader.biPlanes = 1;
-	bmi.bmiHeader.biBitCount = 24;
+	bmi.bmiHeader.biBitCount = 32;
 	bmi.bmiHeader.biCompression = BI_RGB;
 	
 	m_windowHDC = ::GetDC(m_hwnd);

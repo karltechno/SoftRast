@@ -57,7 +57,7 @@ struct Transformed_Tri
 
 struct Framebuffer
 {
-	// R8G8B8 framebuffer
+	// R8G8B8A8 framebuffer
 	uint8_t* ptr;
 
 	// Framebuffer width
