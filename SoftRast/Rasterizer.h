@@ -15,12 +15,23 @@ namespace sr
 
 namespace Raster
 {
+struct FrameBuffer;
+struct DepthBuffer;
+
+struct RasterContext
+{
+	FrameBuffer* frameBuffer;
+	DepthBuffer* depthBuffer;
+
+	uint32_t vpHeight;
+	uint32_t vpWidth;
+};
 
 constexpr uint32_t c_maxVaryings = 16;
 
-struct Transformed_Vert
+struct PipelineVert
 {
-	Transformed_Vert(){}
+	PipelineVert(){}
 
 	union
 	{
@@ -35,12 +46,12 @@ struct Transformed_Vert
 		};
 	};
 
-	float varyings[c_maxVaryings];
+	KT_ALIGNAS(16) float varyings[c_maxVaryings];
 };
 
-struct Transformed_Tri
+struct PipelineTri
 {
-	Transformed_Vert verts[3];
+	PipelineVert verts[3];
 
 	// Raster space recip determinant.
 	float halfRecipTriArea_fp;
@@ -55,7 +66,7 @@ struct Transformed_Tri
 	int32_t ymin, ymax;
 };
 
-struct Framebuffer
+struct FrameBuffer
 {
 	// R8G8B8A8 framebuffer
 	uint8_t* ptr;
@@ -88,7 +99,6 @@ struct DepthBuffer
 	kt::IAllocator* allocator = nullptr;
 };
 
-
 enum class WindingOrder
 {
 	CW,
@@ -98,10 +108,10 @@ enum class WindingOrder
 
 void ClearDepthBufferTest(DepthBuffer& _buffer);
 
-void FillScreenTest(Framebuffer& _buffer, uint8_t const color[3]);
+void FillScreenTest(FrameBuffer& _buffer, uint8_t const color[3]);
 
 // Raster a tri (CCW winding)
-void SetupAndRasterTriTest(Framebuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
+void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
 
 }
 

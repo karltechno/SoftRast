@@ -83,16 +83,14 @@ void Window_Win32::Shutdown()
 
 void Window_Win32::Flip()
 {
-	// Swizzle back buffer rgb -> bgr
+	// Swizzle back buffer rgba -> bgra
 	uint8_t* ptr = (uint8_t*)m_backBufferBitmapPtr;
 	uint8_t* pEnd = ptr + m_width * m_height * 4;
 
-	uint32_t const reg_shift = 0x04040404;
-
 	__m256i const shufmask = _mm256_setr_epi8
 	(
-		1, 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 13, 12, 14, 15,
-		1, 0, 2, 3, 5, 4, 6, 7, 9, 8, 10, 11, 13, 12, 14, 15
+		2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15,
+		2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15
 	);
 
 	while (pEnd - ptr >= 32)

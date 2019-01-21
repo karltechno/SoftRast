@@ -4,7 +4,8 @@ project(SoftRast)
 add_subdirectory("kt")
 
 if(MSVC)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS /Zi)
+    SET(CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} /DEBUG")
 endif()
 
 set(SOFT_RAST_FILES

@@ -13,7 +13,7 @@
 #include "Input.h"
 
 template <typename T>
-static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::Framebuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
+static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::FrameBuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
 {
 	for (uint32_t i = 0; i < _numIdx; i += 3)
 	{
@@ -34,7 +34,7 @@ int main(int argc, char** argv)
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
 	kt::Duration totalTime = kt::Duration::Zero();
 
-	sr::Raster::Framebuffer fb;
+	sr::Raster::FrameBuffer fb;
 	fb.height = window.Height();
 	fb.width = window.Width();
 	fb.ptr = window.BackBufferData();
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 	uint32_t logDtCounter = 0;
 
 	sr::Obj::Model model;
-	model.Load("cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16);
 
@@ -91,19 +91,19 @@ int main(int argc, char** argv)
 		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.75f, 0.0f, 10.0f), kt::Vec3(1.0f, 0.0f, 10.0f), kt::Vec3(0.0f, 0.25f, 10.0f));
 		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.5f, 0.0f, 15.0f), kt::Vec3(10.0f, 0.0f, 15.0f), kt::Vec3(0.0f, 0.5f, 15.0f));
 #else
-		//for (sr::Obj::Mesh const& mesh : model.m_meshes)
-		//{
-		//	if (mesh.m_indexType == sr::IndexType::u16)
-		//	{
-		//		DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-		//	}
-		//	else
-		//	{
-		//		DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-		//	}
-		//}
+		for (sr::Obj::Mesh const& mesh : model.m_meshes)
+		{
+			if (mesh.m_indexType == sr::IndexType::u16)
+			{
+				DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
+			}
+			else
+			{
+				DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
+			}
+		}
 
-		sr::Raster::SetupAndRasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
+		//sr::Raster::SetupAndRasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
 #endif
 		
 		window.Flip();
