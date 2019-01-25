@@ -276,9 +276,8 @@ static void RasterizePartialBlockSIMD_8x8
 		uint8_t* pixelBegin = _ctx.frameBuffer->ptr + y * _ctx.vpWidth * 4 + _xminRaster * 4; // assumes 32bit framebuffer
 
 		__m256i edgeMask = _mm256_or_si256(_mm256_or_si256(e0row, e1row), e2row);
-		edgeMask = _mm256_srai_epi32(edgeMask, 31);
-
-		edgeMask = _mm256_xor_si256(edgeMask, _mm256_cmpeq_epi32(edgeMask, edgeMask)); // flip bits
+		edgeMask = _mm256_srai_epi32(edgeMask, 31); // or sign bits, arith shift right so sign bit = ~0 and no sign bit = 0
+		edgeMask = _mm256_xor_si256(edgeMask, _mm256_cmpeq_epi32(edgeMask, edgeMask)); // flip bits so negative (~0) is 0.
 
 		if (_mm256_movemask_ps(_mm256_castsi256_ps(edgeMask)))
 		{
@@ -334,7 +333,7 @@ static void RasterizePartialBlockSIMD_8x8
 				__m256 const red = _mm256_mul_ps(c_255, _mm256_fmadd_ps(v2_persp, r2, (_mm256_fmadd_ps(v1_persp, r1, _mm256_mul_ps(v0_persp, r0)))));
 				__m256 const green = _mm256_mul_ps(c_255, _mm256_fmadd_ps(v2_persp, g2, (_mm256_fmadd_ps(v1_persp, g1, _mm256_mul_ps(v0_persp, g0)))));
 				__m256 const blue = _mm256_mul_ps(c_255, _mm256_fmadd_ps(v2_persp, b2, (_mm256_fmadd_ps(v1_persp, b1, _mm256_mul_ps(v0_persp, b0)))));
-
+				
 				float red_store[8];
 				float green_store[8];
 				float blue_store[8];
@@ -346,17 +345,10 @@ static void RasterizePartialBlockSIMD_8x8
 				{
 					if (maskReg & (1 << pixIdx))
 					{
-#if 1
 						pixelBegin[pixIdx * 4 + 0] = uint8_t(red_store[pixIdx]);
 						pixelBegin[pixIdx * 4 + 1] = uint8_t(green_store[pixIdx]);
 						pixelBegin[pixIdx * 4 + 2] = uint8_t(blue_store[pixIdx]);
 						pixelBegin[pixIdx * 4 + 3] = 0xFF;
-#else
-						pixelBegin[pixIdx * 4 + 0] = 0xff;
-						pixelBegin[pixIdx * 4 + 1] = 0;
-						pixelBegin[pixIdx * 4 + 2] = 0;
-						pixelBegin[pixIdx * 4 + 3] = 0xFF;
-#endif
 					}
 				}
 			}
