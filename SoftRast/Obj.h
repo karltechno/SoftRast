@@ -44,7 +44,7 @@ struct Mesh
 struct Material
 {
 	kt::String128 m_name;
-	tex::TextureData m_diffuse;
+	Tex::TextureData m_diffuse;
 };
 
 enum LoadFlags : uint32_t

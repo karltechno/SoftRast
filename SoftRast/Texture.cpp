@@ -6,7 +6,7 @@
 namespace sr
 {
 
-namespace tex
+namespace Tex
 {
 
 
