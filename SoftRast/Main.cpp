@@ -59,9 +59,9 @@ int main(int argc, char** argv)
 	kt::Vec3 eye = { 75.0f, 75.0f, 75.0f };
 	kt::Mat4 fullMtx = perspMtx * kt::Mat4::LookAtLH(eye * 10.0f, -kt::Normalize(eye));
 	uint32_t logDtCounter = 0;
-
+	
 	sr::Obj::Model model;
-	model.Load("bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16);
 

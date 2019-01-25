@@ -1,8 +1,10 @@
 #include "Obj.h"
+
 #include <stdio.h>
 #include <kt/Memory.h>
 #include <kt/HashMap.h>
 #include <kt/Logging.h>
+#include <kt/FilePath.h>
 
 namespace sr
 {
@@ -50,10 +52,10 @@ struct MeshParserState
 		m_tempVerticies.Reserve(2048);
 	}
 
-	void FinalizeMesh(Mesh* m)
+	void FinalizeMesh(Mesh* m, uint32_t _matIdx)
 	{
 		m->Clear();
-
+		m->m_matIdx = _matIdx;
 		if (!m_tempVerticies.Size())
 		{
 			return;
@@ -99,6 +101,27 @@ struct MeshParserState
 	kt::Array<kt::Vec2> m_tempUv;
 	kt::Array<kt::Vec3> m_tempNormal;
 };
+
+static char* StripWhiteSpaceAndNewLine(char* _buff)
+{
+	char* ret = _buff;
+	// strip preceding whitespace
+	while (*ret && *ret == ' ' || *ret == '\t') { ++ret; }
+
+	char* temp = ret;
+
+	if (size_t const len = strlen(temp))
+	{
+		// strip trailing whitespace/newline
+		temp += (len - 1);
+		while (temp != ret && (*temp == ' ' || *temp == '\t' || *temp == '\r' || *temp == '\n'))
+		{
+			*temp-- = '\0';
+		}
+	}
+
+	return ret;
+}
 
 static int32_t FixupFaceIdx(int32_t _idx, int32_t _totalVerticies)
 {
@@ -242,6 +265,40 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 	return true;
 }
 
+static void ParseMaterial(FILE* _file, Material* _mat, kt::FilePath const& _rootPath)
+{
+	char lineBuff[2048];
+
+	while (fgets(lineBuff, sizeof(lineBuff), _file))
+	{
+		char* line = StripWhiteSpaceAndNewLine(lineBuff);
+		switch (*line)
+		{
+			case 'm':
+			{
+				static uint32_t const map_Kd_len = 6;
+				if (strncmp(line, "map_Kd", map_Kd_len) == 0)
+				{
+					char* fileName = StripWhiteSpaceAndNewLine(line + map_Kd_len);
+					kt::FilePath diffusePath = _rootPath;
+
+					diffusePath.Append(fileName);
+					_mat->m_diffuse.CreateFromFile(diffusePath.Data());
+				}
+			} break;
+		
+			case 'n':
+			{
+				static uint32_t const newmtl_len = 6;
+				if (strncmp(line, "newmtl", newmtl_len) == 0)
+				{
+					_mat->m_name = StripWhiteSpaceAndNewLine(line + newmtl_len);
+				}
+			} break;
+		}
+	}
+}
+
 bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags const _flags)
 {
 	FILE* f = fopen(_path, "r");
@@ -254,12 +311,18 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags co
 
 	Clear();
 
-	char line[2048];
+	char lineBuff[2048];
 
 	MeshParserState parserState(_tempAllocator);
 
-	while (fgets(line, sizeof(line), f))
+	kt::FilePath const rootPath(kt::FilePath(_path).GetPath());
+
+	uint32_t curMatIdx = 0;
+
+	while (fgets(lineBuff, sizeof(lineBuff), f))
 	{
+		char* line = StripWhiteSpaceAndNewLine(lineBuff);
+
 		switch (line[0])
 		{
 			case 'v':
@@ -312,7 +375,51 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags co
 			{
 				if (parserState.m_tempVerticies.Size())
 				{
-					parserState.FinalizeMesh(&m_meshes.PushBack());
+					parserState.FinalizeMesh(&m_meshes.PushBack(), curMatIdx);
+				}
+			} break;
+
+			case 'u':
+			{
+				static uint32_t const usemtl_len = 6;
+				if (strncmp(line, "usemtl", usemtl_len) == 0)
+				{
+					char* mtl = StripWhiteSpaceAndNewLine(line + usemtl_len);
+					for (uint32_t mtlIdx = 0; mtlIdx < m_materials.Size(); ++mtlIdx)
+					{
+						if (m_materials[mtlIdx].m_name == mtl)
+						{
+							curMatIdx = mtlIdx;
+							break;
+						}
+					}
+				}
+			} break;
+
+			case 'm':
+			{
+				static uint32_t const mtlliblen = 6;
+				if (strncmp("mtllib", line, mtlliblen) == 0)
+				{
+					char* mtlName = line + mtlliblen;
+					while (*mtlName && (*mtlName == ' ' || *mtlName == '\t')) { ++mtlName; }
+
+					if (!(*mtlName))
+					{
+						KT_LOG_ERROR("Invalid material name in obj file: %s", _path);
+						break;
+					}
+
+					kt::FilePath mtlPath = rootPath;
+					mtlPath.Append(mtlName);
+
+					FILE* mtlFile = fopen(mtlPath.Data(), "r");
+					KT_SCOPE_EXIT(fclose(mtlFile));
+					if (!mtlFile)
+					{
+						KT_LOG_ERROR("Failed to open material file: %s", mtlPath.Data());
+					}
+					ParseMaterial(mtlFile, &m_materials.PushBack(), rootPath);
 				}
 			} break;
 		}
@@ -320,7 +427,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags co
 
 	if (parserState.m_tempVerticies.Size())
 	{
-		parserState.FinalizeMesh(&m_meshes.PushBack());
+		parserState.FinalizeMesh(&m_meshes.PushBack(), curMatIdx);
 	}
 
 	if (_flags & LoadFlags::FlipWinding)

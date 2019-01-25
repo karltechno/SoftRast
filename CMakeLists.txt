@@ -23,9 +23,13 @@ set(SOFT_RAST_FILES
     "SoftRast/Input.h"
     "SoftRast/Input.cpp"
 	"SoftRast/SoftRastTypes.h"
+	"SoftRast/Texture.h"
+	"SoftRast/Texture.cpp"
+	"SoftRast/stb_image.h"
+    "SoftRast/stb_image.cpp"
 )
 
-include_directories("External")
+file(COPY "SoftRast/Models/" DESTINATION "${CMAKE_BINARY_DIR}/Models")
 
 add_executable(SoftRast ${SOFT_RAST_FILES})
 target_link_libraries(SoftRast kt)
