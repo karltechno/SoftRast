@@ -25,6 +25,28 @@ static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex
 	}
 }
 
+struct UniformTest
+{
+	sr::Tex::TextureData const* diffuse;
+};
+
+void PixelTest(void const* _uniforms, __m256 const _varyings[sr::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+{
+	UniformTest* uniform = (UniformTest*)_uniforms;
+	memset(o_colour, 0, 4 * 8 * sizeof(float));
+
+	// todo should pass in float ptr?
+	float u[8];
+	float v[8];
+	_mm256_store_ps(u, _varyings[0]);
+	_mm256_store_ps(v, _varyings[1]);
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		sr::Tex::SampleClamp_Slow(*uniform->diffuse, u[i], v[i], &o_colour[i * 4]);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	sr::input::Init();
@@ -93,6 +115,7 @@ int main(int argc, char** argv)
 #else
 		for (sr::Obj::Mesh const& mesh : model.m_meshes)
 		{
+#if 0
 			if (mesh.m_indexType == sr::IndexType::u16)
 			{
 				DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
@@ -101,7 +124,33 @@ int main(int argc, char** argv)
 			{
 				DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
 			}
+#else
+			sr::Renderer::DrawCall call;
+			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData + offsetof(sr::Obj::Vertex, uv);
+			call.m_attributeBuffer.m_stride = sizeof(sr::Obj::Vertex);
+			call.m_attributeBuffer.m_num = mesh.m_numVertices;
+
+			call.m_positionBuffer.m_ptr = (uint8_t*)mesh.m_vertexData;
+			call.m_positionBuffer.m_stride = sizeof(sr::Obj::Vertex);
+			call.m_positionBuffer.m_num = mesh.m_numVertices;
+
+			call.m_indexBuffer.m_ptr = mesh.m_indexData.index16;
+			call.m_indexBuffer.m_num = mesh.m_numIndicies;
+			call.m_indexBuffer.m_stride = mesh.m_indexType == sr::IndexType::u16 ? sizeof(uint16_t) : sizeof(uint32_t);
+			
+			call.m_pixelShader = PixelTest;
+		
+			UniformTest uniforms;
+			if (model.m_materials.Size())
+			{
+				uniforms.diffuse = &model.m_materials[0].m_diffuse;
+			}
+			call.m_pixelUniforms = &uniforms;
+			sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
+#endif
 		}
+
+
 
 		//sr::Raster::SetupAndRasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
 #endif

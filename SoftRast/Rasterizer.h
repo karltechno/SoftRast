@@ -1,6 +1,7 @@
 #pragma once
 #include <kt/kt.h>
 #include <kt/Vec4.h>
+#include "Renderer.h"
 
 namespace kt
 {
@@ -12,6 +13,10 @@ struct IAllocator;
 namespace sr
 {
 
+namespace Tex
+{
+struct TextureData;
+}
 
 namespace Raster
 {
@@ -27,7 +32,6 @@ struct RasterContext
 	uint32_t vpWidth;
 };
 
-constexpr uint32_t c_maxVaryings = 16;
 
 struct PipelineVert
 {
@@ -112,6 +116,9 @@ void FillScreenTest(FrameBuffer& _buffer, uint8_t const color[3]);
 
 // Raster a tri (CCW winding)
 void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
+
+void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, Renderer::DrawCall const& _call);
+
 
 }
 

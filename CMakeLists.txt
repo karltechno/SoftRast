@@ -27,6 +27,8 @@ set(SOFT_RAST_FILES
 	"SoftRast/Texture.cpp"
 	"SoftRast/stb_image.h"
     "SoftRast/stb_image.cpp"
+    "SoftRast/Renderer.h"
+    "SoftRast/Renderer.cpp"
 )
 
 file(COPY "SoftRast/Models/" DESTINATION "${CMAKE_BINARY_DIR}/Models")

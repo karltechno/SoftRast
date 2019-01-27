@@ -360,8 +360,6 @@ static void RasterizePartialBlockSIMD_8x8
 	}
 }
 
-
-#if 1
 static void RasterizeWholeBlockSIMD_8x8
 (
 	RasterContext const& _ctx,
@@ -471,7 +469,105 @@ static void RasterizeWholeBlockSIMD_8x8
 		e2row = _mm256_add_epi32(e2row, _wholeBlock.e2_dx);
 	}
 }
-#endif
+
+static void RasterizeWholeBlockSIMD_8x8_WithShader
+(
+	RasterContext const& _ctx,
+	PipelineTri const& _tri,
+	BlockConstantsSIMD_8x8 const& _wholeBlock,
+	int32_t _e0evalBlockCorner,
+	int32_t _e1evalBlockCorner,
+	int32_t _e2evalBlockCorner,
+	int32_t _xminRaster,
+	int32_t _yminRaster,
+	Renderer::DrawCall const& _call
+)
+{
+	__m256i e0row, e1row, e2row;
+
+	_wholeBlock.InitRows(_e0evalBlockCorner, _e1evalBlockCorner, _e2evalBlockCorner, e0row, e1row, e2row);
+
+	// Should store these before in simd state?
+	__m256 const recipTriArea = _mm256_broadcast_ss(&_tri.halfRecipTriArea_fp);
+
+	__m256 const zOverW_v0 = _mm256_broadcast_ss(&_tri.verts[0].zOverW);
+	__m256 const zOverW_v1 = _mm256_broadcast_ss(&_tri.verts[1].zOverW);
+	__m256 const zOverW_v2 = _mm256_broadcast_ss(&_tri.verts[2].zOverW);
+
+	__m256 const recipW_v0 = _mm256_broadcast_ss(&_tri.verts[0].recipW);
+	__m256 const recipW_v1 = _mm256_broadcast_ss(&_tri.verts[1].recipW);
+	__m256 const recipW_v2 = _mm256_broadcast_ss(&_tri.verts[2].recipW);
+
+	__m256 const one256 = _mm256_set1_ps(1.0f);
+
+
+	for (int32_t y = _yminRaster; y < (_yminRaster + c_blockSize); ++y)
+	{
+		uint8_t* pixelBegin = _ctx.frameBuffer->ptr + y * _ctx.vpWidth * 4 + _xminRaster * 4; // assumes 32bit framebuffer
+
+		__m256 const e0_ps = _mm256_cvtepi32_ps(e0row);
+		__m256 const e1_ps = _mm256_cvtepi32_ps(e1row);
+		__m256 const e2_ps = _mm256_cvtepi32_ps(e2row);
+
+		__m256 const baryv0 = _mm256_mul_ps(recipTriArea, e1_ps);
+		__m256 const baryv1 = _mm256_mul_ps(recipTriArea, e2_ps);
+		__m256 const baryv2 = _mm256_sub_ps(_mm256_sub_ps(one256, baryv0), baryv1);
+
+		__m256 const recipZTemp1 = _mm256_mul_ps(baryv2, zOverW_v2);
+		__m256 const recipZTemp2 = _mm256_fmadd_ps(baryv1, zOverW_v1, recipZTemp1);
+		__m256 const recipZ = _mm256_fmadd_ps(baryv0, zOverW_v0, recipZTemp2);
+
+		__m256 const e0_persp = _mm256_mul_ps(e0_ps, recipW_v2);
+		__m256 const e1_persp = _mm256_mul_ps(e1_ps, recipW_v0);
+		__m256 const e2_persp = _mm256_mul_ps(e2_ps, recipW_v1);
+
+		__m256 const recip_persp_bary = _mm256_div_ps(one256, _mm256_add_ps(_mm256_add_ps(e0_persp, e1_persp), e2_persp));
+
+		__m256 const v0_persp = _mm256_mul_ps(e1_persp, recip_persp_bary);
+		__m256 const v1_persp = _mm256_mul_ps(e2_persp, recip_persp_bary);
+		__m256 const v2_persp = _mm256_sub_ps(one256, _mm256_add_ps(v1_persp, v0_persp));
+
+
+		float* depthPtr = _ctx.depthBuffer->At(_xminRaster, y);
+		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
+
+		__m256 const depthCmpMask = _mm256_and_ps(_mm256_cmp_ps(recipZ, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, recipZ, _CMP_GT_OQ));
+
+		if (int32_t maskReg = _mm256_movemask_ps(depthCmpMask))
+		{
+			__m256 rowVaryings[c_maxVaryings];
+
+			for (uint32_t i = 0; i < c_maxVaryings; ++i)
+			{
+				__m256 const v0_vary = _mm256_broadcast_ss(&_tri.verts[0].varyings[i]);
+				__m256 const v1_vary = _mm256_broadcast_ss(&_tri.verts[1].varyings[i]);
+				__m256 const v2_vary = _mm256_broadcast_ss(&_tri.verts[2].varyings[i]);
+				rowVaryings[i] = _mm256_fmadd_ps(v0_persp, v0_vary, _mm256_fmadd_ps(v1_persp, v1_vary, _mm256_mul_ps(v2_persp, v2_vary)));
+			}
+			
+			KT_ALIGNAS(32) float colourRGBA[4 * 8];
+
+			_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
+
+			for (uint32_t pixIdx = 0; pixIdx < c_blockSize; ++pixIdx)
+			{
+				if (maskReg & (1 << pixIdx))
+				{
+					pixelBegin[pixIdx * 4 + 0] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4]) * 255.0f);
+					pixelBegin[pixIdx * 4 + 1] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4 + 1]) * 255.0f);
+					pixelBegin[pixIdx * 4 + 2] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4 + 2]) * 255.0f);
+					pixelBegin[pixIdx * 4 + 3] = 0;
+				}
+			}
+		}
+
+		e0row = _mm256_add_epi32(e0row, _wholeBlock.e0_dx);
+		e1row = _mm256_add_epi32(e1row, _wholeBlock.e1_dx);
+		e2row = _mm256_add_epi32(e2row, _wholeBlock.e2_dx);
+	}
+}
+
+
 
 static void ShadePartialBlock
 (
@@ -638,6 +734,69 @@ static void RasterTransformedTri_WithBlocks(RasterContext const& _ctx, PipelineT
 		}
 	}
 }
+
+static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, PipelineTri const& _tri, Renderer::DrawCall const& _call)
+{
+	int32_t const xmin = _tri.xmin & ~(c_blockSize - 1);
+	int32_t const ymin = _tri.ymin & ~(c_blockSize - 1);
+	int32_t const xmax = _tri.xmax;
+	int32_t const ymax = _tri.ymax;
+
+	EdgeConstants e0_edge_eq, e1_edge_eq, e2_edge_eq;
+	e0_edge_eq.Set(_tri.v0_fp, _tri.v1_fp, xmin, ymin);
+	e1_edge_eq.Set(_tri.v1_fp, _tri.v2_fp, xmin, ymin);
+	e2_edge_eq.Set(_tri.v2_fp, _tri.v0_fp, xmin, ymin);
+
+	BlockConstantsSIMD_8x8 wholeBlock;
+	wholeBlock.Setup(e0_edge_eq, e1_edge_eq, e2_edge_eq);
+
+	for (int32_t y = ymin; y < ymax; y += c_blockSize)
+	{
+		for (int32_t x = xmin; x < xmax; x += c_blockSize)
+		{
+			// Block corners
+			int32_t const x0_block = x << c_subPixelBits;
+			int32_t const y0_block = y << c_subPixelBits;
+
+			int32_t const x1_block = (x + c_blockSize - 1) << c_subPixelBits;
+			int32_t const y1_block = (y + c_blockSize - 1) << c_subPixelBits;
+
+			// Test whole block.
+			int32_t const e0_x0y0 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x0_block + e0_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e0_x0y1 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x0_block + e0_edge_eq.dx_rasterCoord * y1_block;
+			int32_t const e0_x1y0 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x1_block + e0_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e0_x1y1 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x1_block + e0_edge_eq.dx_rasterCoord * y1_block;
+
+			int32_t const e0_blockeval = (e0_x0y0 | e0_x0y1 | e0_x1y0 | e0_x1y1);
+
+			int32_t const e1_x0y0 = e1_edge_eq.c + e1_edge_eq.dy_rasterCoord * x0_block + e1_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e1_x0y1 = e1_edge_eq.c + e1_edge_eq.dy_rasterCoord * x0_block + e1_edge_eq.dx_rasterCoord * y1_block;
+			int32_t const e1_x1y0 = e1_edge_eq.c + e1_edge_eq.dy_rasterCoord * x1_block + e1_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e1_x1y1 = e1_edge_eq.c + e1_edge_eq.dy_rasterCoord * x1_block + e1_edge_eq.dx_rasterCoord * y1_block;
+
+			int32_t const e1_blockeval = (e1_x0y0 | e1_x0y1 | e1_x1y0 | e1_x1y1);
+
+			int32_t const e2_x0y0 = e2_edge_eq.c + e2_edge_eq.dy_rasterCoord * x0_block + e2_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e2_x0y1 = e2_edge_eq.c + e2_edge_eq.dy_rasterCoord * x0_block + e2_edge_eq.dx_rasterCoord * y1_block;
+			int32_t const e2_x1y0 = e2_edge_eq.c + e2_edge_eq.dy_rasterCoord * x1_block + e2_edge_eq.dx_rasterCoord * y0_block;
+			int32_t const e2_x1y1 = e2_edge_eq.c + e2_edge_eq.dy_rasterCoord * x1_block + e2_edge_eq.dx_rasterCoord * y1_block;
+
+			int32_t const e2_blockeval = (e2_x0y0 | e2_x0y1 | e2_x1y0 | e2_x1y1);
+
+			static bool s_doSimd = true;
+
+			if ((e0_blockeval | e1_blockeval | e2_blockeval) > 0)
+			{
+				RasterizeWholeBlockSIMD_8x8_WithShader(_ctx, _tri, wholeBlock, e0_x0y0, e1_x0y0, e2_x0y0, x, y, _call);
+			}
+			else /*if(e0_blockeval > 0 || e1_blockeval > 0 || e2_blockeval > 0)*/
+			{
+				RasterizePartialBlockSIMD_8x8(_ctx, _tri, wholeBlock, e0_x0y0, e1_x0y0, e2_x0y0, x, y);
+			}
+		}
+	}
+}
+
 
 static void RasterTransformedTri(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, PipelineTri const& _tri)
 {
@@ -1152,6 +1311,69 @@ void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::
 	RasterTransformedTri(_buffer, _depthBuffer, tri);
 #endif
 }
+
+
+void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, Renderer::DrawCall const& _call)
+{
+	RasterContext ctx;
+	ctx.depthBuffer = &_depthBuffer;
+	ctx.frameBuffer = &_buffer;
+	ctx.vpHeight = _buffer.height;
+	ctx.vpWidth = _buffer.width;
+
+	KT_ASSERT(_call.m_indexBuffer.m_num % 3 == 0);
+	for (uint32_t i = 0; i < _call.m_indexBuffer.m_num; i += 3)
+	{
+		PipelineTri outTris[CLIP_OUT_TRI_BUFF_SIZE];
+		PipelineVert verts[3];
+		uint32_t numClipTris;
+
+		uint32_t idx0, idx1, idx2;
+
+		if (_call.m_indexBuffer.m_stride == 4)
+		{
+			idx0 = ((uint32_t*)_call.m_indexBuffer.m_ptr)[i];
+			idx1 = ((uint32_t*)_call.m_indexBuffer.m_ptr)[i + 1];
+			idx2 = ((uint32_t*)_call.m_indexBuffer.m_ptr)[i + 2];
+		}
+		else if (_call.m_indexBuffer.m_stride == 2)
+		{
+			idx0 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i];
+			idx1 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i + 1];
+			idx2 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i + 2];
+		}
+
+		KT_ASSERT(idx0 < _call.m_positionBuffer.m_num);
+		KT_ASSERT(idx1 < _call.m_positionBuffer.m_num);
+		KT_ASSERT(idx2 < _call.m_positionBuffer.m_num);
+
+		uint8_t const* pos0 = (uint8_t*)_call.m_positionBuffer.m_ptr + _call.m_positionBuffer.m_stride * idx0;
+		uint8_t const* pos1 = (uint8_t*)_call.m_positionBuffer.m_ptr + _call.m_positionBuffer.m_stride * idx1;
+		uint8_t const* pos2 = (uint8_t*)_call.m_positionBuffer.m_ptr + _call.m_positionBuffer.m_stride * idx2;
+
+		uint8_t const* attr0 = (uint8_t*)_call.m_attributeBuffer.m_ptr + _call.m_attributeBuffer.m_stride * idx0;
+		uint8_t const* attr1 = (uint8_t*)_call.m_attributeBuffer.m_ptr + _call.m_attributeBuffer.m_stride * idx1;
+		uint8_t const* attr2 = (uint8_t*)_call.m_attributeBuffer.m_ptr + _call.m_attributeBuffer.m_stride * idx2;
+
+
+		verts[0].transformedPos = _mtx * kt::Vec4(*(kt::Vec3*)pos0, 1.0f);
+		verts[1].transformedPos = _mtx * kt::Vec4(*(kt::Vec3*)pos1, 1.0f);
+		verts[2].transformedPos = _mtx * kt::Vec4(*(kt::Vec3*)pos2, 1.0f);
+
+		memcpy(verts[0].varyings, attr0, _call.m_attributeBuffer.m_stride);
+		memcpy(verts[1].varyings, attr1, _call.m_attributeBuffer.m_stride);
+		memcpy(verts[2].varyings, attr2, _call.m_attributeBuffer.m_stride);
+
+		ClipAndSetup(verts, outTris, numClipTris);
+
+		for (uint32_t i = 0; i < numClipTris; ++i)
+		{
+			//RasterTransformedTri(*ctx.frameBuffer, *ctx.depthBuffer, outTris[i]);
+			RasterTransformedTri_WithBlocksAndShader(ctx, outTris[i], _call);
+		}
+	}
+}
+
 
 void DepthBuffer::Init(kt::IAllocator* _allocator, uint32_t _width, uint32_t _height)
 {

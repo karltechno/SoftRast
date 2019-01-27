@@ -18,4 +18,7 @@ enum class IndexType
 	u32
 };
 
+constexpr uint32_t c_maxVaryings = 16;
+
+
 }

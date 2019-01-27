@@ -18,7 +18,11 @@ struct TextureData
 	uint32_t m_width = 0;
 	uint32_t m_height = 0;
 	uint32_t m_bitsPerPixel = 0;
+	
+	uint32_t m_rowStride = 0;
 };
+
+void SampleClamp_Slow(TextureData const& _tex, float const _u, float const _v, float o_colour[4]);
 
 }
 }
