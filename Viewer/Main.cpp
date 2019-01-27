@@ -11,6 +11,7 @@
 
 
 #include "Input.h"
+#include "kt/FilePath.h"
 
 template <typename T>
 static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::FrameBuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
@@ -30,7 +31,7 @@ struct UniformTest
 	sr::Tex::TextureData const* diffuse;
 };
 
-void PixelTest(void const* _uniforms, __m256 const _varyings[sr::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void PixelTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
 {
 	UniformTest* uniform = (UniformTest*)_uniforms;
 	memset(o_colour, 0, 4 * 8 * sizeof(float));
@@ -85,13 +86,15 @@ int main(int argc, char** argv)
 	sr::Obj::Model model;
 	model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
-	kt::Duration frameTime = kt::Duration::FromMicroseconds(16);
+	kt::FilePath const f = kt::FilePath::WorkingDirectory();
+
+	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
 
 	while (!window.WantsQuit())
 	{
 		window.PumpMessageLoop();
-		sr::input::Tick(frameTime.Seconds());
-		controller.UpdateViewGamepad(frameTime.Seconds());
+		sr::input::Tick((float)frameTime.Seconds());
+		controller.UpdateViewGamepad((float)frameTime.Seconds());
 #if 0
 		uint8_t const c =  (uint8_t)(255 * fmod(totalTime.Seconds(), 1.0));
 #else
@@ -101,30 +104,9 @@ int main(int argc, char** argv)
 		sr::Raster::FillScreenTest(fb, col);
 		sr::Raster::ClearDepthBufferTest(depthBuff);
 
-#if 0
-		float myZ = (sinf(totalTime.Seconds() / 2.0f) + 1.0f) * 10.0f + 1.0f;
-		//myZ = 1.0f;
-		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.5f, -50.0f, myZ), kt::Vec3(10.0f, 0.0f, 5.0f), kt::Vec3(0.0f, 0.5f, 5.0f));
-		kt::Mat3 rotMtx = kt::Mat3::RotX(totalTime.Seconds());
 
-		//Raster::RasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-0.5f, -0.5f, myZ), kt::Vec3(0.5f, 0.0f, 1.0f), kt::Vec3(0.0f, 0.5f, myZ));
-
-
-		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.75f, 0.0f, 10.0f), kt::Vec3(1.0f, 0.0f, 10.0f), kt::Vec3(0.0f, 0.25f, 10.0f));
-		//Raster::RasterTriTest(fb, depthBuff, perspMtx, kt::Vec3(-0.5f, 0.0f, 15.0f), kt::Vec3(10.0f, 0.0f, 15.0f), kt::Vec3(0.0f, 0.5f, 15.0f));
-#else
 		for (sr::Obj::Mesh const& mesh : model.m_meshes)
 		{
-#if 0
-			if (mesh.m_indexType == sr::IndexType::u16)
-			{
-				DrawT(mesh.m_indexData.index16, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-			}
-			else
-			{
-				DrawT(mesh.m_indexData.index32, mesh.m_numIndicies, mesh.m_vertexData, fb, depthBuff, controller.GetCam().GetCachedViewProj());
-			}
-#else
 			sr::Renderer::DrawCall call;
 			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData + offsetof(sr::Obj::Vertex, uv);
 			call.m_attributeBuffer.m_stride = sizeof(sr::Obj::Vertex);
@@ -147,14 +129,10 @@ int main(int argc, char** argv)
 			}
 			call.m_pixelUniforms = &uniforms;
 			sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
-#endif
+
 		}
 
 
-
-		//sr::Raster::SetupAndRasterTriTest(fb, depthBuff, controller.GetCam().GetCachedViewProj(), kt::Vec3(-1.0f, -1.0f, 0.0f), kt::Vec3(1.0f, -1.0f, 0.0f), kt::Vec3(0.0f, 1.0f, 0.0f));
-#endif
-		
 		window.Flip();
 
 		kt::TimePoint const timeNow = kt::TimePoint::Now();

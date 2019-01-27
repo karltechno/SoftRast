@@ -50,7 +50,7 @@ struct PipelineVert
 		};
 	};
 
-	KT_ALIGNAS(16) float varyings[c_maxVaryings];
+	KT_ALIGNAS(16) float varyings[Config::c_maxVaryings];
 };
 
 struct PipelineTri

@@ -535,9 +535,9 @@ static void RasterizeWholeBlockSIMD_8x8_WithShader
 
 		if (int32_t maskReg = _mm256_movemask_ps(depthCmpMask))
 		{
-			__m256 rowVaryings[c_maxVaryings];
+			__m256 rowVaryings[Config::c_maxVaryings];
 
-			for (uint32_t i = 0; i < c_maxVaryings; ++i)
+			for (uint32_t i = 0; i < Config::c_maxVaryings; ++i)
 			{
 				__m256 const v0_vary = _mm256_broadcast_ss(&_tri.verts[0].varyings[i]);
 				__m256 const v1_vary = _mm256_broadcast_ss(&_tri.verts[1].varyings[i]);
@@ -1089,7 +1089,7 @@ void ClipAndSetup(PipelineVert clipSpaceVerts[3], PipelineTri o_tris[CLIP_OUT_TR
 					PipelineVert* out = &output[numOutputVerts++];
 					out->transformedPos = kt::Lerp(v1->transformedPos, v0->transformedPos, tInterp);
 
-					for (uint32_t varI = 0; varI < c_maxVaryings; ++varI)
+					for (uint32_t varI = 0; varI < Config::c_maxVaryings; ++varI)
 					{
 						out->varyings[varI] = kt::Lerp(v1->varyings[varI], v0->varyings[varI], tInterp);
 					}
@@ -1100,7 +1100,7 @@ void ClipAndSetup(PipelineVert clipSpaceVerts[3], PipelineTri o_tris[CLIP_OUT_TR
 					float const tInterp = v0_dot / (v0_dot - v1_dot);
 					PipelineVert* out = &output[numOutputVerts++];
 					out->transformedPos = kt::Lerp(v0->transformedPos, v1->transformedPos, tInterp);
-					for (uint32_t varI = 0; varI < c_maxVaryings; ++varI)
+					for (uint32_t varI = 0; varI < Config::c_maxVaryings; ++varI)
 					{
 						out->varyings[varI] = kt::Lerp(v0->varyings[varI], v1->varyings[varI], tInterp);
 					}
