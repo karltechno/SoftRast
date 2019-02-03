@@ -117,8 +117,7 @@ void FillScreenTest(FrameBuffer& _buffer, uint8_t const color[3]);
 // Raster a tri (CCW winding)
 void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, kt::Vec3 const& _v0, kt::Vec3 const& _v1, kt::Vec3 const& _v2);
 
-void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, Renderer::DrawCall const& _call);
-
+void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, DrawCall const& _call);
 
 }
 

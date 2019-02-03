@@ -18,14 +18,25 @@ enum class IndexType
 	u32
 };
 
+// Todo: move into constants file
 namespace Config
 {
-constexpr uint32_t c_tileHeightLog2 = 6;
-constexpr uint32_t c_tileWidthLog2 = 6;
-constexpr uint32_t c_tileHeight = 1 << c_tileHeightLog2;
-constexpr uint32_t c_tileWidth = 1 << c_tileHeightLog2;
+constexpr uint32_t c_binHeightLog2 = 7;
+constexpr uint32_t c_binWidthLog2 = 7;
+constexpr uint32_t c_binHeight = 1 << c_binHeightLog2;
+constexpr uint32_t c_binWidth = 1 << c_binHeightLog2;
+
+constexpr int32_t c_subPixelBits = 4;
+constexpr int32_t c_subPixelStep = 1 << c_subPixelBits;
+constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
 
 constexpr uint32_t c_maxVaryings = 16;
+
+constexpr uint32_t c_simdWidth = 8;
+
+// Todo: use these values, also switch to reverse-z
+constexpr float c_depthMin = 0.0f;
+constexpr float c_depthMax = 1.0f;
 
 }
 

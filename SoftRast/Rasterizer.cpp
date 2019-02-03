@@ -6,6 +6,7 @@
 #include <kt/Memory.h>
 #include <kt/Logging.h>
 #include <float.h>
+#include "SoftRastTypes.h"
 
 namespace sr
 {
@@ -39,22 +40,28 @@ void ClearDepthBufferTest(DepthBuffer& _buffer)
 	}
 }
 
-constexpr int32_t c_subPixelBits = 4;
-constexpr int32_t c_subPixelStep = 1 << c_subPixelBits;
-constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
+
 
 constexpr int32_t c_blockSize = 8;
 
 struct EdgeConstants
 {
+#define FIX_FP_BITS 1
+
 	void Set(int32_t const _v0[2], int32_t const _v1[2], int32_t _xmin, int32_t _ymin)
 	{
 #if 1
-		c = (-_v0[0] * (_v1[1] - _v0[1]) + _v0[1] * (_v1[0] - _v0[0]));
+		int64_t ctemp =  _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
+
+		//int64_t ctemp = (-_v0[0] * (_v1[1] - _v0[1]) + _v0[1] * (_v1[0] - _v0[0]));
+#if FIX_FP_BITS
+		ctemp >>= Config::c_subPixelBits;
+#endif
+		c = int32_t(ctemp);
 #else
 		int64_t const c_lhs = -_v0[0] * (_v1[1] - _v0[1]);
  		int64_t const c_rhs = _v0[1] * (_v1[0] - _v0[0]);
-		c = int32_t((c_lhs + c_rhs) >> (c_subPixelBits + 1));
+		c = int32_t((c_lhs + c_rhs) >> (Config::c_subPixelBits + 1));
 #endif
 		dy_rasterCoord = (_v1[1] - _v0[1]);
 		dx_rasterCoord = (_v0[0] - _v1[0]);
@@ -65,11 +72,11 @@ struct EdgeConstants
 			c += 1;
 		}
 
-		cur_base = c + dy_rasterCoord * (_xmin << c_subPixelBits) + dx_rasterCoord * (_ymin << c_subPixelBits);
+		cur_base = c + dy_rasterCoord * (_xmin << Config::c_subPixelBits) + dx_rasterCoord * (_ymin << Config::c_subPixelBits);
 		eval = cur_base;
 
-		dy_subpix = dy_rasterCoord << c_subPixelBits;
-		dx_subpix = dx_rasterCoord << c_subPixelBits;
+		dy_subpix = dy_rasterCoord << Config::c_subPixelBits;
+		dx_subpix = dx_rasterCoord << Config::c_subPixelBits;
 	}
 
 	void IncX()
@@ -105,7 +112,7 @@ struct RasterEdgeConstants
 #else
 		int64_t const c_lhs = -_v0[0] * (_v1[1] - _v0[1]);
 		int64_t const c_rhs = _v0[1] * (_v1[0] - _v0[0]);
-		c = int32_t((c_lhs + c_rhs) >> (c_subPixelBits + 1));
+		c = int32_t((c_lhs + c_rhs) >> (Config::c_subPixelBits + 1));
 #endif
 		dy = (_v1[1] - _v0[1]);
 		dx = (_v0[0] - _v1[0]);
@@ -116,8 +123,8 @@ struct RasterEdgeConstants
 			c += 1;
 		}
 
-		dy <<= c_subPixelBits;
-		dx <<= c_subPixelBits;
+		dy <<= Config::c_subPixelBits;
+		dx <<= Config::c_subPixelBits;
 
 		cBboxOrigin = c + dx * _yminFp + dy * _xminFp;
 		dx_nextBlockRow = dy - dx * c_blockSize;
@@ -140,6 +147,15 @@ struct BlockConstantsSIMD_8x8
 {
 	void Setup(EdgeConstants const& _e0, EdgeConstants const& _e1, EdgeConstants const& _e2)
 	{
+#if FIX_FP_BITS
+		e0_dx = _mm256_set1_epi32(_e0.dx_rasterCoord);
+		e1_dx = _mm256_set1_epi32(_e1.dx_rasterCoord);
+		e2_dx = _mm256_set1_epi32(_e2.dx_rasterCoord);
+
+		e0_dy = _e0.dy_rasterCoord;
+		e1_dy = _e1.dy_rasterCoord;
+		e2_dy = _e2.dy_rasterCoord;
+#else
 		e0_dx = _mm256_set1_epi32(_e0.dx_subpix);
 		e1_dx = _mm256_set1_epi32(_e1.dx_subpix);
 		e2_dx = _mm256_set1_epi32(_e2.dx_subpix);
@@ -147,6 +163,8 @@ struct BlockConstantsSIMD_8x8
 		e0_dy = _e0.dy_subpix;
 		e1_dy = _e1.dy_subpix;
 		e2_dy = _e2.dy_subpix;
+#endif
+
 	}
 
 	void InitRows(int32_t _e0eval, int32_t _e1eval, int32_t _e2eval, __m256i& o_e0, __m256i& o_e1, __m256i& o_e2) const
@@ -175,18 +193,18 @@ static void ShadeWholeBlock
 	int32_t _ymin
 )
 {
-	int32_t const x0_block = _xmin << c_subPixelBits;
-	int32_t const y0_block = _ymin << c_subPixelBits;
+	int32_t const x0_block = _xmin << Config::c_subPixelBits;
+	int32_t const y0_block = _ymin << Config::c_subPixelBits;
 
-	int32_t const x1_block = (_xmin + c_blockSize) << c_subPixelBits;
-	int32_t const y1_block = (_ymin + c_blockSize) << c_subPixelBits;
+	int32_t const x1_block = (_xmin + c_blockSize) << Config::c_subPixelBits;
+	int32_t const y1_block = (_ymin + c_blockSize) << Config::c_subPixelBits;
 
-	for (int32_t y_fp = y0_block; y_fp < y1_block; y_fp += c_subPixelStep)
+	for (int32_t y_fp = y0_block; y_fp < y1_block; y_fp += Config::c_subPixelStep)
 	{
-		for (int32_t x_fp = x0_block; x_fp < x1_block; x_fp += c_subPixelStep)
+		for (int32_t x_fp = x0_block; x_fp < x1_block; x_fp += Config::c_subPixelStep)
 		{
-			int32_t const x = x_fp >> c_subPixelBits;
-			int32_t const y = y_fp >> c_subPixelBits;
+			int32_t const x = x_fp >> Config::c_subPixelBits;
+			int32_t const y = y_fp >> Config::c_subPixelBits;
 
 			uint8_t* pixel = _ctx.frameBuffer->ptr + y * _ctx.vpWidth * 4 + x * 4; // assumes 32bit framebuffer
 
@@ -480,7 +498,7 @@ static void RasterizeWholeBlockSIMD_8x8_WithShader
 	int32_t _e2evalBlockCorner,
 	int32_t _xminRaster,
 	int32_t _yminRaster,
-	Renderer::DrawCall const& _call
+	DrawCall const& _call
 )
 {
 	__m256i e0row, e1row, e2row;
@@ -580,11 +598,11 @@ static void ShadePartialBlock
 	int32_t _ymin
 )
 {
-	int32_t const x0_block = _xmin << c_subPixelBits;
-	int32_t const y0_block = _ymin << c_subPixelBits;
+	int32_t const x0_block = _xmin << Config::c_subPixelBits;
+	int32_t const y0_block = _ymin << Config::c_subPixelBits;
 
-	int32_t const x1_block = (_xmin + c_blockSize) << c_subPixelBits;
-	int32_t const y1_block = (_ymin + c_blockSize) << c_subPixelBits;
+	int32_t const x1_block = (_xmin + c_blockSize) << Config::c_subPixelBits;
+	int32_t const y1_block = (_ymin + c_blockSize) << Config::c_subPixelBits;
 
 	int32_t e0Base = _e0.c + _e0.dy_rasterCoord * x0_block + _e0.dx_rasterCoord * y0_block;
 	int32_t e1Base = _e1.c + _e1.dy_rasterCoord * x0_block + _e1.dx_rasterCoord * y0_block;
@@ -595,12 +613,12 @@ static void ShadePartialBlock
 	int32_t e2Eval = e2Base;
 
 
-	for (int32_t y_fp = y0_block; y_fp < y1_block; y_fp += c_subPixelStep)
+	for (int32_t y_fp = y0_block; y_fp < y1_block; y_fp += Config::c_subPixelStep)
 	{
-		for (int32_t x_fp = x0_block; x_fp < x1_block; x_fp += c_subPixelStep)
+		for (int32_t x_fp = x0_block; x_fp < x1_block; x_fp += Config::c_subPixelStep)
 		{
-			int32_t const x = x_fp >> c_subPixelBits;
-			int32_t const y = y_fp >> c_subPixelBits;
+			int32_t const x = x_fp >> Config::c_subPixelBits;
+			int32_t const y = y_fp >> Config::c_subPixelBits;
 
 			bool inTri = true;
 
@@ -679,11 +697,11 @@ static void RasterTransformedTri_WithBlocks(RasterContext const& _ctx, PipelineT
 		for (int32_t x = xmin; x < xmax; x += c_blockSize)
 		{
 			// Block corners
-			int32_t const x0_block = x << c_subPixelBits;
-			int32_t const y0_block = y << c_subPixelBits;
+			int32_t const x0_block = x << Config::c_subPixelBits;
+			int32_t const y0_block = y << Config::c_subPixelBits;
 
-			int32_t const x1_block = (x + c_blockSize - 1) << c_subPixelBits;
-			int32_t const y1_block = (y + c_blockSize - 1) << c_subPixelBits;
+			int32_t const x1_block = (x + c_blockSize - 1) << Config::c_subPixelBits;
+			int32_t const y1_block = (y + c_blockSize - 1) << Config::c_subPixelBits;
 
 			// Test whole block.
 			int32_t const e0_x0y0 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x0_block + e0_edge_eq.dx_rasterCoord * y0_block;
@@ -707,7 +725,7 @@ static void RasterTransformedTri_WithBlocks(RasterContext const& _ctx, PipelineT
 
 			int32_t const e2_blockeval = (e2_x0y0 | e2_x0y1 | e2_x1y0 | e2_x1y1);
 
-			static bool s_doSimd = true;
+			static bool s_doSimd = false;
 
 			if ((e0_blockeval | e1_blockeval | e2_blockeval) > 0)
 			{
@@ -735,7 +753,7 @@ static void RasterTransformedTri_WithBlocks(RasterContext const& _ctx, PipelineT
 	}
 }
 
-static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, PipelineTri const& _tri, Renderer::DrawCall const& _call)
+static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, PipelineTri const& _tri, DrawCall const& _call)
 {
 	int32_t const xmin = _tri.xmin & ~(c_blockSize - 1);
 	int32_t const ymin = _tri.ymin & ~(c_blockSize - 1);
@@ -755,11 +773,19 @@ static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, 
 		for (int32_t x = xmin; x < xmax; x += c_blockSize)
 		{
 			// Block corners
-			int32_t const x0_block = x << c_subPixelBits;
-			int32_t const y0_block = y << c_subPixelBits;
+#if FIX_FP_BITS
+			int32_t const x0_block = x;
+			int32_t const y0_block = y;
 
-			int32_t const x1_block = (x + c_blockSize - 1) << c_subPixelBits;
-			int32_t const y1_block = (y + c_blockSize - 1) << c_subPixelBits;
+			int32_t const x1_block = (x + c_blockSize - 1);
+			int32_t const y1_block = (y + c_blockSize - 1);
+#else
+			int32_t const x0_block = x << Config::c_subPixelBits;
+			int32_t const y0_block = y << Config::c_subPixelBits;
+
+			int32_t const x1_block = (x + c_blockSize - 1) << Config::c_subPixelBits;
+			int32_t const y1_block = (y + c_blockSize - 1) << Config::c_subPixelBits;
+#endif
 
 			// Test whole block.
 			int32_t const e0_x0y0 = e0_edge_eq.c + e0_edge_eq.dy_rasterCoord * x0_block + e0_edge_eq.dx_rasterCoord * y0_block;
@@ -943,9 +969,9 @@ static bool SetupTri(PipelineVert const& _v0, PipelineVert const& _v1, PipelineV
 	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 
-	int32_t const v0_fp[2] = { int32_t(v0raster.x * c_subPixelStep + 0.5f), int32_t(v0raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v1_fp[2] = { int32_t(v1raster.x * c_subPixelStep + 0.5f), int32_t(v1raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v2_fp[2] = { int32_t(v2raster.x * c_subPixelStep + 0.5f), int32_t(v2raster.y * c_subPixelStep + 0.5f) };
+	int32_t const v0_fp[2] = { int32_t(v0raster.x * Config::c_subPixelStep + 0.5f), int32_t(v0raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
 
 	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
 	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
@@ -954,11 +980,11 @@ static bool SetupTri(PipelineVert const& _v0, PipelineVert const& _v1, PipelineV
 	int32_t xmin, ymin;
 	int32_t xmax, ymax;
 
-	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
-	xmax = kt::Min((int32_t)_screenWidth, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymax = kt::Min((int32_t)_screenHeight, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmax = kt::Min((int32_t)_screenWidth, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymax = kt::Min((int32_t)_screenHeight, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
 	int64_t triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
 
@@ -973,7 +999,11 @@ static bool SetupTri(PipelineVert const& _v0, PipelineVert const& _v1, PipelineV
 	o_tri.ymin = ymin;
 	o_tri.ymax = ymax;
 
+#if FIX_FP_BITS
+	o_tri.halfRecipTriArea_fp = 1.0f / (triArea2_fp >> Config::c_subPixelBits);
+#else
 	o_tri.halfRecipTriArea_fp = 1.0f / triArea2_fp;
+#endif
 
 	o_tri.v0_fp[0] = v0_fp[0];
 	o_tri.v0_fp[1] = v0_fp[1];
@@ -1157,9 +1187,9 @@ void RasterClippedTri(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Vec4 
 	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 
-	int32_t const v0_fp[2] = { int32_t(v0raster.x * c_subPixelStep + 0.5f), int32_t(v0raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v1_fp[2] = { int32_t(v1raster.x * c_subPixelStep + 0.5f), int32_t(v1raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v2_fp[2] = { int32_t(v2raster.x * c_subPixelStep + 0.5f), int32_t(v2raster.y * c_subPixelStep + 0.5f) };
+	int32_t const v0_fp[2] = { int32_t(v0raster.x * Config::c_subPixelStep + 0.5f), int32_t(v0raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
 
 	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
 	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
@@ -1168,11 +1198,11 @@ void RasterClippedTri(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Vec4 
 	int32_t xmin, ymin;
 	int32_t xmax, ymax;
 
-	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
-	xmax = kt::Min((int32_t)_buffer.width, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymax = kt::Min((int32_t)_buffer.height, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmax = kt::Min((int32_t)_buffer.width, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymax = kt::Min((int32_t)_buffer.height, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
 	int64_t triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
 
@@ -1259,9 +1289,9 @@ void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::
 	kt::Vec2 const v1raster = kt::Vec2(v1_clip.w * v1_clip.x * halfScreenCoords.x + halfScreenCoords.x, v1_clip.w * v1_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 	kt::Vec2 const v2raster = kt::Vec2(v2_clip.w * v2_clip.x * halfScreenCoords.x + halfScreenCoords.x, v2_clip.w * v2_clip.y * -halfScreenCoords.y + halfScreenCoords.y);
 
-	int32_t const v0_fp[2] = { int32_t(v0raster.x * c_subPixelStep + 0.5f), int32_t(v0raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v1_fp[2] = { int32_t(v1raster.x * c_subPixelStep + 0.5f), int32_t(v1raster.y * c_subPixelStep + 0.5f) };
-	int32_t const v2_fp[2] = { int32_t(v2raster.x * c_subPixelStep + 0.5f), int32_t(v2raster.y * c_subPixelStep + 0.5f) };
+	int32_t const v0_fp[2] = { int32_t(v0raster.x * Config::c_subPixelStep + 0.5f), int32_t(v0raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
+	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
 
 	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
 	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
@@ -1270,11 +1300,11 @@ void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::
 	int32_t xmin, ymin;
 	int32_t xmax, ymax;
 
-	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymin = kt::Max(0, ((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
-	xmax = kt::Min((int32_t)_buffer.width, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + c_subPixelMask) >> c_subPixelBits));
-	ymax = kt::Min((int32_t)_buffer.height, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + c_subPixelMask) >> c_subPixelBits));
+	xmax = kt::Min((int32_t)_buffer.width, ((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
+	ymax = kt::Min((int32_t)_buffer.height, ((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits));
 
 	int64_t const triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
 
@@ -1313,7 +1343,7 @@ void SetupAndRasterTriTest(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::
 }
 
 
-void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, Renderer::DrawCall const& _call)
+void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 const& _mtx, DrawCall const& _call)
 {
 	RasterContext ctx;
 	ctx.depthBuffer = &_depthBuffer;
