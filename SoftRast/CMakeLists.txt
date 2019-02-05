@@ -14,6 +14,8 @@ set(SOFT_RAST_FILES
     "Binning.cpp"
     "TaskSystem.h"
     "TaskSystem.cpp"
+    "Rasterizer_new.h"
+    "Rasterizer_new.cpp"
 )
 
 add_library(SoftRast ${SOFT_RAST_FILES})

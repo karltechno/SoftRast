@@ -9,9 +9,10 @@
 #include "Camera.h"
 #include "Obj.h"
 
-
 #include "Input.h"
 #include "kt/FilePath.h"
+#include "Renderer.h"
+
 
 template <typename T>
 static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::FrameBuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
@@ -51,7 +52,6 @@ void PixelTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVa
 int main(int argc, char** argv)
 {
 	sr::input::Init();
-
 	sr::Window_Win32 window("SoftRast", 1280, 720);
 
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
@@ -90,6 +90,11 @@ int main(int argc, char** argv)
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
 
+	sr::RenderContext renderCtx;
+	
+	sr::FrameBuffer framebuffer;
+	framebuffer.Init(1280, 720);
+
 	while (!window.WantsQuit())
 	{
 		window.PumpMessageLoop();
@@ -107,7 +112,9 @@ int main(int argc, char** argv)
 
 		for (sr::Obj::Mesh const& mesh : model.m_meshes)
 		{
-			sr::Renderer::DrawCall call;
+			sr::DrawCall call;
+			call.m_frameBuffer = &framebuffer;
+			call.m_mvp = controller.GetCam().GetCachedViewProj();
 			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData + offsetof(sr::Obj::Vertex, uv);
 			call.m_attributeBuffer.m_stride = sizeof(sr::Obj::Vertex);
 			call.m_attributeBuffer.m_num = mesh.m_numVertices;
@@ -117,6 +124,8 @@ int main(int argc, char** argv)
 			call.m_positionBuffer.m_num = mesh.m_numVertices;
 
 			call.m_indexBuffer.m_ptr = mesh.m_indexData.index16;
+			//call.m_indexBuffer.m_ptr = mesh.m_indexData.index16 + 18;
+			call.m_indexBuffer.m_num = 3;
 			call.m_indexBuffer.m_num = mesh.m_numIndicies;
 			call.m_indexBuffer.m_stride = mesh.m_indexType == sr::IndexType::u16 ? sizeof(uint16_t) : sizeof(uint32_t);
 			
@@ -128,9 +137,17 @@ int main(int argc, char** argv)
 				uniforms.diffuse = &model.m_materials[0].m_diffuse;
 			}
 			call.m_pixelUniforms = &uniforms;
-			sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
+
+			//sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
+
+			renderCtx.BeginFrame();
+			renderCtx.ClearFrameBuffer(framebuffer, 0);
+			renderCtx.DrawIndexed(call);
+			renderCtx.EndFrame();
+
 
 		}
+		framebuffer.Blit(window.BackBufferData());
 
 
 		window.Flip();

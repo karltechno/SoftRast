@@ -1,14 +1,13 @@
 #pragma once
 #include <stdint.h>
+#include "kt/LinearAllocator.h"
 
 namespace sr
 {
 
-namespace Task
-{
-struct Packet;
+using ThreadScratchAllocator = kt::LinearAllocator<kt::LinearAllocatorThreadSafety::ThreadSafeAlloc>;
 
-using TaskFn = void(*)(void const* _data, uint32_t _start, uint32_t _end, bool _isFinished);
+using TaskFn = void(*)(void const* _data, uint32_t _start, uint32_t _end);
 
 struct Packet
 {
@@ -32,7 +31,5 @@ public:
 
 private:
 };
-
-}
 
 }

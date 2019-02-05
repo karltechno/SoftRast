@@ -35,8 +35,8 @@ void TextureData::Clear()
 
 void SampleClamp_Slow(TextureData const& _tex, float const _u, float const _v, float o_colour[4])
 {
-	uint32_t const clampU = uint32_t(kt::Clamp(_u, 0.0f, 1.0f) * _tex.m_width);
-	uint32_t const clampV = uint32_t(kt::Clamp(_v, 0.0f, 1.0f) * _tex.m_height);
+	uint32_t const clampU = uint32_t(kt::Clamp(_u, 0.0f, 1.0f) * (_tex.m_width));
+	uint32_t const clampV = uint32_t(kt::Clamp(_v, 0.0f, 1.0f) * (_tex.m_height));
 
 	uint32_t const offs = clampV * _tex.m_rowStride + clampU * (_tex.m_bitsPerPixel / 8);
 	uint8_t* pix = _tex.m_data + offs;

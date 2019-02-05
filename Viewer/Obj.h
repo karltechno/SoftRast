@@ -55,7 +55,7 @@ enum LoadFlags : uint32_t
 
 struct Model
 {
-	bool Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags const _flags = LoadFlags::FlipWinding);
+	bool Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t const _flags = LoadFlags::FlipWinding);
 	void Clear();
 
 	kt::Array<Mesh> m_meshes;

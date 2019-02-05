@@ -299,7 +299,7 @@ static void ParseMaterial(FILE* _file, Material* _mat, kt::FilePath const& _root
 	}
 }
 
-bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, LoadFlags const _flags)
+bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  const _flags)
 {
 	FILE* f = fopen(_path, "r");
 	if (!f)

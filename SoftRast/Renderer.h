@@ -4,37 +4,44 @@
 
 #include "SoftRastTypes.h"
 #include "kt/Array.h"
+#include "kt/Mat4.h"
+#include "TaskSystem.h"
+#include "Binning.h"
 
 
 namespace sr
 {
 
-namespace Renderer
-{
 
 // Always RGBA8
 struct ColourTile
 {
 	static uint32_t const c_bytesPerPixel = 4;
 
-	KT_ALIGNAS(32) uint8_t m_colour[Config::c_tileHeight * Config::c_tileWidth * c_bytesPerPixel];
-	char _pad_[64];
+	void Clear(uint32_t _col);
+
+	KT_ALIGNAS(32) uint8_t m_colour[Config::c_binHeight * Config::c_binWidth * c_bytesPerPixel];
 };
 
 struct DepthTile
 {
-	KT_ALIGNAS(32) float m_depth[Config::c_tileWidth * Config::c_tileWidth];
-	char _pad_[64];
+	void Clear();
+
+	KT_ALIGNAS(32) float m_depth[Config::c_binWidth * Config::c_binWidth];
+	float m_hiZmin;
+	float m_hiZmax;
 };
 
 struct FrameBuffer
 {
 	KT_NO_COPY(FrameBuffer);
-	
+	FrameBuffer() = default;
 	FrameBuffer(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
 	~FrameBuffer();
 
 	void Init(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
+
+	void Blit(uint8_t* _linearFramebuffer);
 
 	ColourTile* m_colourTiles = nullptr;
 	DepthTile* m_depthTiles = nullptr;
@@ -64,6 +71,7 @@ struct DrawCall
 	DrawCall& SetPositionBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetFrameBuffer(FrameBuffer const* _buffer);
+	DrawCall& SetMVP(kt::Mat4 const& _mvp);
 
 	PixelShaderFn m_pixelShader = nullptr;
 	void const* m_pixelUniforms = nullptr;
@@ -74,30 +82,36 @@ struct DrawCall
 	
 	FrameBuffer const* m_frameBuffer = nullptr;
 
+	kt::Mat4 m_mvp = kt::Mat4::Identity();
+
+	uint32_t m_drawCallIdx = 0;
+
 	uint32_t m_colourWrite		: 1;
 	uint32_t m_depthWrite		: 1;
 	uint32_t m_depthRead		: 1;
 };
 
 
-class Context
+class RenderContext
 {
 public:
-
-	Context();
-	~Context();
+	RenderContext();
+	~RenderContext();
 
 	void DrawIndexed(DrawCall const& _call);
+
+	void ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color = 0x00000000, bool _clearColour = true, bool _clearDepth = true);
 
 	void BeginFrame();
 	void EndFrame();
 
 private:
+	ThreadScratchAllocator m_allocator;
+	BinContext m_binner;
 	kt::Array<DrawCall> m_drawCalls;
 };
 
 
 
 
-}
 }
