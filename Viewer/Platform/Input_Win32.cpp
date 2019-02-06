@@ -113,6 +113,11 @@ void Impl_Windows::UpdateXInput()
 	{
 		InternalXinputState& pad = m_gamepads[padIdx];
 
+		for (uint8_t& button : pad.m_buttonState)
+		{
+			button &= ~(c_wasPressedBit | c_wasReleasedBit);
+		}
+
 		XINPUT_STATE xinputState;
 		if (XInputGetState(padIdx, &xinputState) != ERROR_SUCCESS)
 		{

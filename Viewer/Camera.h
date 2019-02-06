@@ -56,6 +56,8 @@ struct FreeCamController
 	Camera const& GetCam() const;
 
 private:
+	float m_speedMult = 1.0f;
+
 	kt::Quat m_camQuat = kt::Quat::Identity();
 	kt::Vec3 m_camPos = kt::Vec3(0.0f);
 

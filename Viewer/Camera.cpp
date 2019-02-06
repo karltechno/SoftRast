@@ -103,6 +103,16 @@ void FreeCamController::UpdateViewGamepad(float const _dt)
 {
 	kt::Vec3 cameraMove(0.0f);
 
+	if (input::WasPressed(input::GamePadButton::RightBumper))
+	{
+		m_speedMult *= 2.0f;
+	}
+
+	if (input::WasPressed(input::GamePadButton::LeftBumper))
+	{
+		m_speedMult *= 0.5f;
+	}
+
 	//if (input::IsDown(input::Key::KeyW))
 	//{
 	//	cameraMove.z += 1.0f * _dt;
@@ -128,7 +138,7 @@ void FreeCamController::UpdateViewGamepad(float const _dt)
 	gamepadMove.x = input::GetGamepadAxis(input::GamepadAxis::LeftStick_X);
 	gamepadMove.y = input::GetGamepadAxis(input::GamepadAxis::LeftStick_Y);
 
-	float const gamepadMoveY = input::GetGamepadAxis(input::GamepadAxis::RightTrigger) * _dt + input::GetGamepadAxis(input::GamepadAxis::LeftTrigger) * -_dt;
+	float const gamepadMoveY = m_speedMult * (input::GetGamepadAxis(input::GamepadAxis::RightTrigger) * _dt + input::GetGamepadAxis(input::GamepadAxis::LeftTrigger) * -_dt);
 
 	float const gamepadMoveLength = kt::Length(gamepadMove);
 	if (gamepadMoveLength > 1.0f)
@@ -136,7 +146,7 @@ void FreeCamController::UpdateViewGamepad(float const _dt)
 		gamepadMove /= gamepadMoveLength;
 	}
 
-	gamepadMove *= _dt;
+	gamepadMove *= _dt * m_speedMult;
 
 	Move(cameraMove + kt::Vec3(gamepadMove.x, gamepadMoveY, gamepadMove.y));
 
