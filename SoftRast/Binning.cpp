@@ -427,6 +427,8 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 {
 	for (uint32_t triIdx = _triIdxBegin; triIdx < _triIdxEnd; ++triIdx)
 	{
+		KT_ASSERT(triIdx < _drawCall.m_indexBuffer.m_num);
+
 		uint32_t indicies[3];
 		kt::Vec4 vtx[3];
 
