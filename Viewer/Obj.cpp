@@ -134,13 +134,14 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 {
 	char const* p = _line + 2;
 
-	int32_t posIndicies[3] = {};
-	int32_t texIndicies[3] = {};
-	int32_t normIndicies[3] = {};
+	// 6 so we can expand quad into 2 tris
+	int32_t posIndicies[6] = {};
+	int32_t texIndicies[6] = {};
+	int32_t normIndicies[6] = {};
 
 	int32_t numFaceVerts = 0;
 
-	while (*p && numFaceVerts < 3)
+	while (*p && numFaceVerts < 4)
 	{
 		auto parseNum = [&p](int32_t& _output)
 		{
@@ -201,6 +202,24 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 		parseNum(normIndicies[vertIdx]);
 	}
 
+	// triangulate the quad
+	if (numFaceVerts == 4)
+	{
+		// dumb triangulation
+		posIndicies[5] = posIndicies[3];
+		normIndicies[5] = normIndicies[3];
+		texIndicies[5] = texIndicies[3];
+
+		posIndicies[3] = posIndicies[0];
+		normIndicies[3] = normIndicies[0];
+		texIndicies[3] = texIndicies[0];
+	
+		posIndicies[4] = posIndicies[2];
+		normIndicies[4] = normIndicies[2];
+		texIndicies[4] = texIndicies[2];
+		numFaceVerts = 6;
+	}
+
 
 	TempFace tempFace;
 	for (int32_t vId = 0; vId < numFaceVerts; ++vId)
@@ -257,7 +276,7 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 			}
 			else
 			{
-				memset(&v->norm, 0, sizeof(float) * 2);
+				memset(&v->uv, 0, sizeof(float) * 2);
 			}
 		}
 	}
@@ -265,9 +284,11 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 	return true;
 }
 
-static void ParseMaterial(FILE* _file, Material* _mat, kt::FilePath const& _rootPath)
+static void ParseMaterial(FILE* _file, Model& _model, kt::FilePath const& _rootPath)
 {
 	char lineBuff[2048];
+
+	Material* curMat = nullptr;
 
 	while (fgets(lineBuff, sizeof(lineBuff), _file))
 	{
@@ -279,11 +300,17 @@ static void ParseMaterial(FILE* _file, Material* _mat, kt::FilePath const& _root
 				static uint32_t const map_Kd_len = 6;
 				if (strncmp(line, "map_Kd", map_Kd_len) == 0)
 				{
+					if (!curMat)
+					{
+						KT_LOG_INFO("No newmtl directive, can't parse mtl!");
+						break;
+					}
+
 					char* fileName = StripWhiteSpaceAndNewLine(line + map_Kd_len);
 					kt::FilePath diffusePath = _rootPath;
 
 					diffusePath.Append(fileName);
-					_mat->m_diffuse.CreateFromFile(diffusePath.Data());
+					curMat->m_diffuse.CreateFromFile(diffusePath.Data());
 				}
 			} break;
 		
@@ -292,7 +319,8 @@ static void ParseMaterial(FILE* _file, Material* _mat, kt::FilePath const& _root
 				static uint32_t const newmtl_len = 6;
 				if (strncmp(line, "newmtl", newmtl_len) == 0)
 				{
-					_mat->m_name = StripWhiteSpaceAndNewLine(line + newmtl_len);
+					curMat = &_model.m_materials.PushBack();
+					curMat->m_name = StripWhiteSpaceAndNewLine(line + newmtl_len);
 				}
 			} break;
 		}
@@ -423,7 +451,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 					{
 						KT_LOG_ERROR("Failed to open material file: %s", mtlPath.Data());
 					}
-					ParseMaterial(mtlFile, &m_materials.PushBack(), rootPath);
+					ParseMaterial(mtlFile, *this, rootPath);
 				}
 			} break;
 		}
