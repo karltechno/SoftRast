@@ -38,7 +38,7 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 	
 	if (!tex || !tex->m_data)
 	{
-
+		memset(o_colour, 0, 4 * 8 * sizeof(float));
 		return;
 	}
 
@@ -50,7 +50,7 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		sr::Tex::SampleClamp_Slow(*tex, u[i], v[i], &o_colour[i * 4]);
+		sr::Tex::SampleWrap_Slow(*tex, u[i], v[i], &o_colour[i * 4]);
 	}
 }
 
@@ -117,7 +117,7 @@ int main(int argc, char** argv)
 	uint32_t logDtCounter = 0;
 	
 	sr::Obj::Model model;
-	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);

@@ -141,12 +141,17 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 RenderContext::RenderContext()
 {
 	// todo: hard coded
+	//m_taskSystem.InitFromMainThread(1);
+	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
+
 	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
-	m_binner.Init(1, uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
+	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
+
 }
 
 RenderContext::~RenderContext()
 {
+	m_taskSystem.WaitAndShutdown();
 	m_allocator.Reset();
 }
 
@@ -193,23 +198,56 @@ void RenderContext::EndFrame()
 		m_binner.m_bins[i].m_numChunks = 0;
 	}
 
+	struct BinTrisTaskData
+	{
+		DrawCall const* call;
+		RenderContext* ctx;
+	};
+
+	Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
+	BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
+
+	int32_t frontEndCounter = 0;
+
 	for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 	{
 		DrawCall const& draw = m_drawCalls[i];
+
+		auto drawCallTaskFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
+		{
+			BinTrisTaskData* data = (BinTrisTaskData*)_task->m_userData;
+			BinTrisEntry(data->ctx->m_binner, data->ctx->m_allocator, _threadIdx, _start, _end, *data->call);
+		};
+
+		Task* task = drawCallTasks + i;
+		BinTrisTaskData* taskData = drawCallTasksData + i;
+		taskData->call = &draw;
+		taskData->ctx = this;
+
+		*task = Task(drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData);
+		task->m_taskCounter = &frontEndCounter;
+
+		m_taskSystem.PushTask(task);
+
 		BinTrisEntry(m_binner, m_allocator, 0, 0, draw.m_indexBuffer.m_num / 3, draw);
 	}
+
+	m_taskSystem.WaitForCounter(&frontEndCounter);
 
 	uint32_t activeBins = 0;
 	uint32_t activeChunks = 0;
 
+	int32_t tileRasterCounter = 0;
 
 	for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
 	{
 		for (uint32_t binX = 0; binX < m_binner.m_numBinsX; ++binX)
 		{
+			bool anyTris = false;
 			for (uint32_t threadIdx = 0; threadIdx < m_binner.m_numThreads; ++threadIdx)
 			{
 				ThreadBin& bin = m_binner.LookupThreadBin(threadIdx, binX, binY);
+#if 0
 				activeBins += bin.m_numChunks != 0;
 				for (uint32_t j = 0; j < bin.m_numChunks; ++j)
 				{
@@ -219,10 +257,55 @@ void RenderContext::EndFrame()
 					uint32_t tileIdx = binY * m_binner.m_numBinsX + binX;
 					RasterTrisInBin(call, *bin.m_binChunks[j], &call.m_frameBuffer->m_depthTiles[tileIdx], &call.m_frameBuffer->m_colourTiles[tileIdx]);
 				}
+#else
+				anyTris |= bin.m_numChunks != 0;
 			}
+
+			if (anyTris)
+			{
+				struct TileTaskData
+				{
+					Task t;
+					BinContext* binCtx;
+					DrawCall* drawCalls;
+					uint32_t tileX;
+					uint32_t tileY;
+					uint32_t numThreads;
+				};
+
+				auto tileRasterFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
+				{
+					TileTaskData* data = (TileTaskData*)_task->m_userData;
+					for (uint32_t i = 0; i < data->numThreads; ++i)
+					{
+						ThreadBin& bin = data->binCtx->LookupThreadBin(i, data->tileX, data->tileY);
+						for (uint32_t j = 0; j < bin.m_numChunks; ++j)
+						{
+							uint32_t tileIdx = data->tileY * data->binCtx->m_numBinsX + data->tileX;
+							DrawCall& call = data->drawCalls[bin.m_drawCallIndicies[j]];
+							RasterTrisInBin(call, *bin.m_binChunks[j], &call.m_frameBuffer->m_depthTiles[tileIdx], &call.m_frameBuffer->m_colourTiles[tileIdx]);
+						}
+
+					}
+				};
+
+				TileTaskData* t = (TileTaskData*)KT_ALLOCA(sizeof(TileTaskData));
+				t->numThreads = m_binner.m_numThreads;
+				t->binCtx = &m_binner;
+				t->binCtx = &m_binner;
+				t->tileX = binX;
+				t->tileY = binY;
+				t->drawCalls = m_drawCalls.Data();
+				t->t = Task(tileRasterFn, 1, 1, t);
+				t->t.m_taskCounter = &tileRasterCounter;
+				m_taskSystem.PushTask(&t->t);
+#endif
+			}
+
 		}
 	}
 
+	m_taskSystem.WaitForCounter(&tileRasterCounter);
 	KT_LOG_INFO("%u bins, %u chunks", activeBins, activeChunks);
 }
 

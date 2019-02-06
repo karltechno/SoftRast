@@ -107,6 +107,8 @@ public:
 	void EndFrame();
 
 private:
+	TaskSystem m_taskSystem;
+
 	ThreadScratchAllocator m_allocator;
 	BinContext m_binner;
 	kt::Array<DrawCall> m_drawCalls;
