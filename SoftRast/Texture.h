@@ -24,5 +24,8 @@ struct TextureData
 
 void SampleClamp_Slow(TextureData const& _tex, float const _u, float const _v, float o_colour[4]);
 
+void SampleWrap_Slow(TextureData const& _tex, float const _u, float const _v, float o_colour[4]);
+
+
 }
 }
