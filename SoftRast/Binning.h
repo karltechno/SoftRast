@@ -10,7 +10,7 @@ namespace sr
 struct DrawCall;
 
 static uint32_t const c_trisPerBinChunk = 512;
-static uint32_t const c_maxThreadBinChunks = 256;
+static uint32_t const c_maxThreadBinChunks = 512;
 
 struct BinChunk
 {
@@ -19,6 +19,14 @@ struct BinChunk
 		int32_t c[3];
 		int32_t dx[3];
 		int32_t dy[3];
+
+		// Todo: signed if we shift origin for guard band?
+
+		uint8_t blockMinX, blockMaxX;
+		uint8_t blockMinY, blockMaxY;
+
+		static_assert(Config::c_binHeight < UINT8_MAX, "Can no longer encode tile bounds in uint8");
+		static_assert(Config::c_binWidth < UINT8_MAX, "Can no longer encode tile bounds in uint8");
 	};
 
 	struct PlaneEq

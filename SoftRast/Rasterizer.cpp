@@ -585,6 +585,111 @@ static void RasterizeWholeBlockSIMD_8x8_WithShader
 	}
 }
 
+static void RasterizePartialBlockSIMD_8x8_WithShader
+(
+	RasterContext const& _ctx,
+	PipelineTri const& _tri,
+	BlockConstantsSIMD_8x8 const& _wholeBlock,
+	int32_t _e0evalBlockCorner,
+	int32_t _e1evalBlockCorner,
+	int32_t _e2evalBlockCorner,
+	int32_t _xminRaster,
+	int32_t _yminRaster,
+	DrawCall const& _call
+)
+{
+	__m256i e0row, e1row, e2row;
+
+	_wholeBlock.InitRows(_e0evalBlockCorner, _e1evalBlockCorner, _e2evalBlockCorner, e0row, e1row, e2row);
+
+	// Should store these before in simd state?
+	__m256 const recipTriArea = _mm256_broadcast_ss(&_tri.halfRecipTriArea_fp);
+
+	__m256 const zOverW_v0 = _mm256_broadcast_ss(&_tri.verts[0].zOverW);
+	__m256 const zOverW_v1 = _mm256_broadcast_ss(&_tri.verts[1].zOverW);
+	__m256 const zOverW_v2 = _mm256_broadcast_ss(&_tri.verts[2].zOverW);
+
+	__m256 const recipW_v0 = _mm256_broadcast_ss(&_tri.verts[0].recipW);
+	__m256 const recipW_v1 = _mm256_broadcast_ss(&_tri.verts[1].recipW);
+	__m256 const recipW_v2 = _mm256_broadcast_ss(&_tri.verts[2].recipW);
+
+	__m256 const one256 = _mm256_set1_ps(1.0f);
+
+
+	for (int32_t y = _yminRaster; y < (_yminRaster + c_blockSize); ++y)
+	{
+		uint8_t* pixelBegin = _ctx.frameBuffer->ptr + y * _ctx.vpWidth * 4 + _xminRaster * 4; // assumes 32bit framebuffer
+
+		__m256i edgeMask = _mm256_or_si256(_mm256_or_si256(e0row, e1row), e2row);
+		edgeMask = _mm256_srai_epi32(edgeMask, 31); // or sign bits, arith shift right so sign bit = ~0 and no sign bit = 0
+		edgeMask = _mm256_xor_si256(edgeMask, _mm256_cmpeq_epi32(edgeMask, edgeMask)); // flip bits so negative (~0) is 0.
+
+		if (_mm256_movemask_ps(_mm256_castsi256_ps(edgeMask)))
+		{
+
+			__m256 const e0_ps = _mm256_cvtepi32_ps(e0row);
+			__m256 const e1_ps = _mm256_cvtepi32_ps(e1row);
+			__m256 const e2_ps = _mm256_cvtepi32_ps(e2row);
+
+			__m256 const baryv0 = _mm256_mul_ps(recipTriArea, e1_ps);
+			__m256 const baryv1 = _mm256_mul_ps(recipTriArea, e2_ps);
+			__m256 const baryv2 = _mm256_sub_ps(_mm256_sub_ps(one256, baryv0), baryv1);
+
+			__m256 const recipZTemp1 = _mm256_mul_ps(baryv2, zOverW_v2);
+			__m256 const recipZTemp2 = _mm256_fmadd_ps(baryv1, zOverW_v1, recipZTemp1);
+			__m256 const recipZ = _mm256_fmadd_ps(baryv0, zOverW_v0, recipZTemp2);
+
+			__m256 const e0_persp = _mm256_mul_ps(e0_ps, recipW_v2);
+			__m256 const e1_persp = _mm256_mul_ps(e1_ps, recipW_v0);
+			__m256 const e2_persp = _mm256_mul_ps(e2_ps, recipW_v1);
+
+			__m256 const recip_persp_bary = _mm256_div_ps(one256, _mm256_add_ps(_mm256_add_ps(e0_persp, e1_persp), e2_persp));
+
+			__m256 const v0_persp = _mm256_mul_ps(e1_persp, recip_persp_bary);
+			__m256 const v1_persp = _mm256_mul_ps(e2_persp, recip_persp_bary);
+			__m256 const v2_persp = _mm256_sub_ps(one256, _mm256_add_ps(v1_persp, v0_persp));
+
+
+			float* depthPtr = _ctx.depthBuffer->At(_xminRaster, y);
+			__m256 const depthGather = _mm256_loadu_ps(depthPtr);
+
+			__m256 const depthCmpMask = _mm256_and_ps(_mm256_castsi256_ps(edgeMask), _mm256_and_ps(_mm256_cmp_ps(recipZ, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, recipZ, _CMP_GT_OQ)));
+
+			if (int32_t maskReg = _mm256_movemask_ps(depthCmpMask))
+			{
+				__m256 rowVaryings[Config::c_maxVaryings];
+
+				for (uint32_t i = 0; i < Config::c_maxVaryings; ++i)
+				{
+					__m256 const v0_vary = _mm256_broadcast_ss(&_tri.verts[0].varyings[i]);
+					__m256 const v1_vary = _mm256_broadcast_ss(&_tri.verts[1].varyings[i]);
+					__m256 const v2_vary = _mm256_broadcast_ss(&_tri.verts[2].varyings[i]);
+					rowVaryings[i] = _mm256_fmadd_ps(v0_persp, v0_vary, _mm256_fmadd_ps(v1_persp, v1_vary, _mm256_mul_ps(v2_persp, v2_vary)));
+				}
+
+				KT_ALIGNAS(32) float colourRGBA[4 * 8];
+
+				_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
+
+				for (uint32_t pixIdx = 0; pixIdx < c_blockSize; ++pixIdx)
+				{
+					if (maskReg & (1 << pixIdx))
+					{
+						pixelBegin[pixIdx * 4 + 0] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4]) * 255.0f);
+						pixelBegin[pixIdx * 4 + 1] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4 + 1]) * 255.0f);
+						pixelBegin[pixIdx * 4 + 2] = uint8_t(kt::Min(1.0f, colourRGBA[pixIdx * 4 + 2]) * 255.0f);
+						pixelBegin[pixIdx * 4 + 3] = 0;
+					}
+				}
+			}
+		}
+
+		e0row = _mm256_add_epi32(e0row, _wholeBlock.e0_dx);
+		e1row = _mm256_add_epi32(e1row, _wholeBlock.e1_dx);
+		e2row = _mm256_add_epi32(e2row, _wholeBlock.e2_dx);
+	}
+}
+
 
 
 static void ShadePartialBlock
@@ -817,7 +922,7 @@ static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, 
 			}
 			else /*if(e0_blockeval > 0 || e1_blockeval > 0 || e2_blockeval > 0)*/
 			{
-				RasterizePartialBlockSIMD_8x8(_ctx, _tri, wholeBlock, e0_x0y0, e1_x0y0, e2_x0y0, x, y);
+				RasterizePartialBlockSIMD_8x8_WithShader(_ctx, _tri, wholeBlock, e0_x0y0, e1_x0y0, e2_x0y0, x, y, _call);
 			}
 		}
 	}

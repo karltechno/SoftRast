@@ -115,10 +115,6 @@ static void ShadePartialBlockAVX_8x8
 			__m256 depthCmpMask = _mm256_and_ps(_mm256_cmp_ps(zOverW, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, zOverW, _CMP_GT_OQ));
 			depthCmpMask = _mm256_and_ps(_mm256_castsi256_ps(edgeMask), depthCmpMask);
 			
-			static bool bypassDepth = true;
-			
-			if(bypassDepth)
-				depthCmpMask = _mm256_castsi256_ps(edgeMask);
 #if TEST_IT
 			if (int32_t maskReg = _mm256_movemask_ps(depthCmpMask))
 #endif
@@ -178,16 +174,59 @@ static void ShadePartialBlockAVX_8x8
 void RasterTrisInBin(DrawCall const& _call, BinChunk const& _chunk, DepthTile* _depth, ColourTile* _colour)
 {
 	BlockInterpolants8x8 blockinterpolant;
-	EdgeEquations8x8 edges;
+	EdgeEquations8x8 edges8x8;
 
 	for (uint32_t triIdx = 0; triIdx < _chunk.m_numTris; ++triIdx)
 	{
-		for (uint32_t yBlock = 0; yBlock < Config::c_binHeight; yBlock += 8)
+		BinChunk::EdgeEq const& edges = _chunk.m_edgeEq[triIdx];
+
+		uint32_t const xBlockBegin = edges.blockMinX & ~7;
+		uint32_t const yBlockBegin = edges.blockMinY & ~7;
+
+		uint32_t const xBlockEnd = edges.blockMaxX;
+		uint32_t const yBlockEnd = edges.blockMaxY;
+
+		for (uint32_t yBlock = yBlockBegin; yBlock < yBlockEnd; yBlock += 8)
 		{
-			for (uint32_t xBlock = 0; xBlock < Config::c_binWidth; xBlock += 8)
+			for (uint32_t xBlock = xBlockBegin; xBlock < xBlockEnd; xBlock += 8)
 			{
-				GatherPartialBlockState(blockinterpolant, edges, _chunk, xBlock , yBlock, triIdx);
-				ShadePartialBlockAVX_8x8(_call, _depth, _colour, xBlock , yBlock, blockinterpolant, edges);
+				int32_t const binScreenX0 = xBlock;
+				int32_t const binScreenX1 = xBlock + Config::c_binWidth;
+
+				int32_t const binScreenY0 = yBlock;
+				int32_t const binScreenY1 = yBlock + Config::c_binHeight;
+
+				// Todo: slow, can offset edges and just test upper corner
+				int32_t const e0_x0y0 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY0;
+				int32_t const e0_x0y1 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY1;
+				int32_t const e0_x1y0 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY0;
+				int32_t const e0_x1y1 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY1;
+
+				uint32_t const e0_allOut = (e0_x0y0 > 0) | ((e0_x0y1 > 0) << 1) | ((e0_x1y0 > 0) << 2) | ((e0_x1y1 > 0) << 3);
+
+				int32_t const e1_x0y0 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY0;
+				int32_t const e1_x0y1 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY1;
+				int32_t const e1_x1y0 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY0;
+				int32_t const e1_x1y1 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY1;
+
+				uint32_t const e1_allOut = (e1_x0y0 > 0) | ((e1_x0y1 > 0) << 1) | ((e1_x1y0 > 0) << 2) | ((e1_x1y1 > 0) << 3);
+
+				int32_t const e2_x0y0 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY0;
+				int32_t const e2_x0y1 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY1;
+				int32_t const e2_x1y0 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY0;
+				int32_t const e2_x1y1 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY1;
+
+				uint32_t const e2_allOut = (e2_x0y0 > 0) | ((e2_x0y1 > 0) << 1) | ((e2_x1y0 > 0) << 2) | ((e2_x1y1 > 0) << 3);
+
+				if (!e0_allOut || !e1_allOut || !e2_allOut)
+				{
+					continue;
+				}
+
+				//if(e0_allOut == 0xF && e1_allOut == 0xF && e2_allOut == 0xF) // todo, full block
+
+				GatherPartialBlockState(blockinterpolant, edges8x8, _chunk, xBlock , yBlock, triIdx);
+				ShadePartialBlockAVX_8x8(_call, _depth, _colour, xBlock , yBlock, blockinterpolant, edges8x8);
 			}
 		}
 	}

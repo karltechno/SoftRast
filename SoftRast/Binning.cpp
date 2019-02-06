@@ -191,6 +191,10 @@ KT_FORCEINLINE static void FetchIndicies(DrawCall const& _call, uint32_t _triIdx
 			KT_ASSERT(false);
 		} break;
 	}
+
+	KT_ASSERT(o_indicies[0] < _call.m_positionBuffer.m_num);
+	KT_ASSERT(o_indicies[1] < _call.m_positionBuffer.m_num);
+	KT_ASSERT(o_indicies[2] < _call.m_positionBuffer.m_num);
 }
 
 KT_FORCEINLINE static void FetchPositions(DrawCall const& _call, uint32_t const i_indicies[3], kt::Vec4 o_positions[3])
@@ -298,20 +302,23 @@ static void BinTransformedAndClippedTri
 		return;
 	}
 
+	uint32_t xmin, ymin;
+	uint32_t xmax, ymax;
+
 	BinChunk::EdgeEq edges;
+
+	xmin = (uint16_t)kt::Clamp(((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)width - 1);
+	ymin = (uint16_t)kt::Clamp(((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)height - 1);
+
+	xmax = (uint16_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)width - 1);
+	ymax = (uint16_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)height - 1);
+
+
 
 	SetupEdge(edges, 0, v0_fp, v1_fp);
 	SetupEdge(edges, 1, v1_fp, v2_fp);
 	SetupEdge(edges, 2, v2_fp, v0_fp);
 
-	uint32_t xmin, ymin;
-	uint32_t xmax, ymax;
-
-	xmin = (uint32_t)kt::Clamp(((kt::Min(kt::Min(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)width - 1);
-	ymin = (uint32_t)kt::Clamp(((kt::Min(kt::Min(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)height - 1);
-
-	xmax = (uint32_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)width - 1);
-	ymax = (uint32_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)height - 1);
 
 	kt::Vec2 const d10_raster = v1raster - v0raster;
 	kt::Vec2 const d20_raster = v2raster - v0raster;
@@ -347,7 +354,35 @@ static void BinTransformedAndClippedTri
 			int32_t const binScreenY0 = binY * Config::c_binHeight;
 			int32_t const binScreenY1 = binScreenY0 + Config::c_binHeight;
 
-			// Todo: actually test the tile, not just bin everything in bbox.
+			// Todo: slow, can offset edges and just test upper corner
+			int32_t const e0_x0y0 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY0;
+			int32_t const e0_x0y1 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY1;
+			int32_t const e0_x1y0 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY0;
+			int32_t const e0_x1y1 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY1;
+
+			uint32_t const e0_allOut = (e0_x0y0 > 0) | ((e0_x0y1 > 0) << 1) | ((e0_x1y0 > 0) << 2) | ((e0_x1y1 > 0) << 3);
+
+			int32_t const e1_x0y0 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY0;
+			int32_t const e1_x0y1 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY1;
+			int32_t const e1_x1y0 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY0;
+			int32_t const e1_x1y1 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY1;
+
+			uint32_t const e1_allOut = (e1_x0y0 > 0) | ((e1_x0y1 > 0) << 1) | ((e1_x1y0 > 0) << 2) | ((e1_x1y1 > 0) << 3);
+
+			int32_t const e2_x0y0 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY0;
+			int32_t const e2_x0y1 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY1;
+			int32_t const e2_x1y0 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY0;
+			int32_t const e2_x1y1 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY1;
+
+			uint32_t const e2_allOut = (e2_x0y0 > 0) | ((e2_x0y1 > 0) << 1) | ((e2_x1y0 > 0) << 2) | ((e2_x1y1 > 0) << 3);
+
+			if (!e0_allOut || !e1_allOut || !e2_allOut)
+			{
+				continue;
+			}
+
+			// todo full block
+
 			BinChunk& chunk = GetOrCreateBinForDrawCall(_alloc, _ctx, bin, _call);
 
 			KT_ASSERT(chunk.m_numTris < c_trisPerBinChunk);
@@ -361,6 +396,12 @@ static void BinTransformedAndClippedTri
 				// pre shift edge constant terms to top of tile
 				outEdge.c[i] += (outEdge.dx[i] * binScreenY0) + (outEdge.dy[i] * binScreenX0);
 			}
+
+			outEdge.blockMinX = uint8_t(kt::Clamp<int32_t>(int32_t(xmin) - int32_t(binScreenX0), 0, Config::c_binWidth));
+			outEdge.blockMaxX = uint8_t(kt::Clamp<int32_t>(int32_t(xmax) - int32_t(binScreenX0), 0, Config::c_binWidth));
+
+			outEdge.blockMinY = uint8_t(kt::Clamp<int32_t>(int32_t(ymin) - int32_t(binScreenY0), 0, Config::c_binHeight));
+			outEdge.blockMaxY = uint8_t(kt::Clamp<int32_t>(int32_t(ymax) - int32_t(binScreenY0), 0, Config::c_binHeight));
 
 			// pre shift plane constants to tile top left
 			float const screenV0dx = (float)binScreenX0 - v0raster.x;
@@ -403,7 +444,6 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 		uint8_t clipv2 = ComputeClipMask(vtx[2]);
 
 		maskOr = clipv0 | clipv1 | clipv2;
-
 
 		if (maskOr == 0)
 		{
