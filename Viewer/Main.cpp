@@ -32,20 +32,56 @@ struct UniformTest
 	sr::Tex::TextureData const* diffuse;
 };
 
-void PixelTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
 {
-	UniformTest* uniform = (UniformTest*)_uniforms;
-	memset(o_colour, 0, 4 * 8 * sizeof(float));
+	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
+	
+	if (!tex || !tex->m_data)
+	{
+
+		return;
+	}
 
 	// todo should pass in float ptr?
-	float u[8];
-	float v[8];
-	_mm256_store_ps(u, _varyings[0]);
-	_mm256_store_ps(v, _varyings[1]);
+	KT_ALIGNAS(32) float u[8];
+	KT_ALIGNAS(32) float v[8];
+	_mm256_store_ps(u, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float)]);
+	_mm256_store_ps(v, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float) + 1]);
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		sr::Tex::SampleClamp_Slow(*uniform->diffuse, u[i], v[i], &o_colour[i * 4]);
+		sr::Tex::SampleClamp_Slow(*tex, u[i], v[i], &o_colour[i * 4]);
+	}
+}
+
+void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+{
+
+	// todo should pass in float ptr?
+
+	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float);
+	uint32_t const greenOffset = redOffset + 1;
+	uint32_t const blueOffset = greenOffset + 1;
+
+	__m256 const half = _mm256_set1_ps(0.5f);
+
+	__m256 const red = _mm256_fmadd_ps(_varyings[redOffset], half, half);
+	__m256 const green = _mm256_fmadd_ps(_varyings[greenOffset], half, half);
+	__m256 const blue = _mm256_fmadd_ps(_varyings[blueOffset], half, half);
+
+	KT_ALIGNAS(32) float red_store[8];
+	KT_ALIGNAS(32) float green_store[8];
+	KT_ALIGNAS(32) float blue_store[8];
+	_mm256_store_ps(red_store, red);
+	_mm256_store_ps(green_store, green);
+	_mm256_store_ps(blue_store, blue);
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		o_colour[i * 4 + 0] = red_store[i];
+		o_colour[i * 4 + 1] = green_store[i];
+		o_colour[i * 4 + 2] = blue_store[i];
+		o_colour[i * 4 + 3] = 0xFF;
 	}
 }
 
@@ -73,18 +109,18 @@ int main(int argc, char** argv)
 	proj.m_aspect = 1280.0f / 720.0f;
 	proj.m_fov = kt::ToRadians(85.0f);
 	proj.m_nearPlane = 0.1f;
-	proj.m_farPlane = 10000.0f;
+	proj.m_farPlane = 1000.0f;
 
 	controller.SetProjectionParams(proj);
 	controller.SetPos({ 0.0f, 0.0f, -2.0f });
 
-
-	kt::Vec3 eye = { 75.0f, 75.0f, 75.0f };
-	kt::Mat4 fullMtx = perspMtx * kt::Mat4::LookAtLH(eye * 10.0f, -kt::Normalize(eye));
 	uint32_t logDtCounter = 0;
 	
 	sr::Obj::Model model;
-	model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::FilePath const f = kt::FilePath::WorkingDirectory();
 
@@ -109,13 +145,15 @@ int main(int argc, char** argv)
 		sr::Raster::FillScreenTest(fb, col);
 		sr::Raster::ClearDepthBufferTest(depthBuff);
 
+		renderCtx.BeginFrame();
+		renderCtx.ClearFrameBuffer(framebuffer, 0);
 
 		for (sr::Obj::Mesh const& mesh : model.m_meshes)
 		{
 			sr::DrawCall call;
 			call.m_frameBuffer = &framebuffer;
 			call.m_mvp = controller.GetCam().GetCachedViewProj();
-			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData + offsetof(sr::Obj::Vertex, uv);
+			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData;
 			call.m_attributeBuffer.m_stride = sizeof(sr::Obj::Vertex);
 			call.m_attributeBuffer.m_num = mesh.m_numVertices;
 
@@ -125,29 +163,42 @@ int main(int argc, char** argv)
 
 			call.m_indexBuffer.m_ptr = mesh.m_indexData.index16;
 			//call.m_indexBuffer.m_ptr = mesh.m_indexData.index16 + 18;
-			call.m_indexBuffer.m_num = 3;
+			//call.m_indexBuffer.m_num = 3;
 			call.m_indexBuffer.m_num = mesh.m_numIndicies;
 			call.m_indexBuffer.m_stride = mesh.m_indexType == sr::IndexType::u16 ? sizeof(uint16_t) : sizeof(uint32_t);
 			
-			call.m_pixelShader = PixelTest;
 		
-			UniformTest uniforms;
-			if (model.m_materials.Size())
+			if (mesh.m_matIdx < model.m_materials.Size())
 			{
-				uniforms.diffuse = &model.m_materials[0].m_diffuse;
+				call.m_pixelUniforms = &model.m_materials[mesh.m_matIdx].m_diffuse;
+				call.m_pixelShader = DiffuseTest;
 			}
-			call.m_pixelUniforms = &uniforms;
+			else
+			{
+				call.m_pixelShader = NormalShaderTest;
+			}
+
+
 
 			//sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
 
-			renderCtx.BeginFrame();
-			renderCtx.ClearFrameBuffer(framebuffer, 0);
 			renderCtx.DrawIndexed(call);
-			renderCtx.EndFrame();
 
 
 		}
-		framebuffer.Blit(window.BackBufferData());
+
+		renderCtx.EndFrame();
+
+		static bool blitDepth = false;
+
+		if (blitDepth)
+		{
+			framebuffer.BlitDepth(window.BackBufferData());
+		}
+		else
+		{
+			framebuffer.Blit(window.BackBufferData());
+		}
 
 
 		window.Flip();

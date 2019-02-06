@@ -59,7 +59,32 @@ void FrameBuffer::Blit(uint8_t* _linearFramebuffer)
 			}
 		}
 	}
+}
 
+void FrameBuffer::BlitDepth(uint8_t* _linearFramebuffer)
+{
+	// hack/slow
+	uint32_t* fb32 = (uint32_t*)_linearFramebuffer;
+	for (uint32_t tileY = 0; tileY < m_tilesY; ++tileY)
+	{
+		for (uint32_t tileX = 0; tileX < m_tilesX; ++tileX)
+		{
+			DepthTile const& tile = m_depthTiles[tileY * m_tilesX + tileX];
+
+			uint32_t const yEnd = kt::Min(Config::c_binHeight, m_height - tileY * Config::c_binHeight);
+			uint32_t const widthCopySize = kt::Min(Config::c_binWidth, m_width - tileX * Config::c_binWidth);
+
+			for (uint32_t y = 0; y < yEnd; ++y)
+			{
+				float const* src = &tile.m_depth[y * Config::c_binWidth];
+				uint32_t* dest = fb32 + tileY * Config::c_binHeight * m_width + tileX * Config::c_binWidth + y * m_width;
+				for (uint32_t x = 0; x < widthCopySize; ++x)
+				{
+					*dest++ = uint8_t(*src++ * 255.0f);
+				}
+			}
+		}
+	}
 }
 
 DrawCall::DrawCall()
@@ -116,7 +141,7 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 RenderContext::RenderContext()
 {
 	// todo: hard coded
-	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 64);
+	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
 	m_binner.Init(1, uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
 }
 
@@ -148,12 +173,7 @@ void RenderContext::ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color, bool
 	if (_clearColour)
 	{
 		for (uint32_t i = 0; i < (_buffer.m_tilesX * _buffer.m_tilesY); ++i)
-		{
-			
-			for (uint32_t row = 0; row < Config::c_binHeight; ++row)
-			{
-
-			}
+		{	
 			memset(_buffer.m_colourTiles[i].m_colour, _color, sizeof(_buffer.m_colourTiles[i].m_colour));
 		}
 	}

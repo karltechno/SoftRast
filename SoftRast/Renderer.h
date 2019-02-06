@@ -42,6 +42,7 @@ struct FrameBuffer
 	void Init(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
 
 	void Blit(uint8_t* _linearFramebuffer);
+	void BlitDepth(uint8_t* _linearFramebuffer);
 
 	ColourTile* m_colourTiles = nullptr;
 	DepthTile* m_depthTiles = nullptr;
