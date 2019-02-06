@@ -334,6 +334,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 					int numRead = sscanf(line + 2, "%f %f %f", readVtx, readVtx + 1, readVtx + 2);
 					if (numRead != 3)
 					{
+						KT_LOG_ERROR("Failed to parse obj, Bad vertex pos!");
 						Clear();
 						return false;
 					}
@@ -345,6 +346,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 					int numRead = sscanf(line + 3, "%f %f", readUv, readUv + 1);
 					if (numRead != 2)
 					{
+						KT_LOG_ERROR("Failed to parse obj, Bad uv coord!");
 						Clear();
 						return false;
 					}
@@ -356,6 +358,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 					int numRead = sscanf(line + 3, "%f %f %f", readNormal, readNormal + 1, readNormal + 2);
 					if (numRead != 3)
 					{
+						KT_LOG_ERROR("Failed to parse obj, Bad vertex normal!");
 						Clear();
 						return false;
 					}
@@ -366,6 +369,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 			{
 				if (!ParseFace(parserState, line))
 				{
+					KT_LOG_ERROR("Failed to parse obj, Bad vertex face!");
 					Clear();
 					return false;
 				}
