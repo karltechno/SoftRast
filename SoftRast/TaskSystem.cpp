@@ -59,26 +59,21 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		t.Run([](kt::Thread* _self) 
 		{ 
 			ThreadInitData* data = (ThreadInitData*)_self->GetUserData();
-			kt::AtomicFetchAdd32(data->initCounter, -1);
+			TaskSystem* sys = data->sys;
 			tls_threadIndex = data->threadId;
-			data->sys->WorkerLoop(data->threadId);
+			kt::AtomicFetchAdd32(data->initCounter, -1);
+			sys->WorkerLoop(data->threadId);
 		}, 
 		&data, threadNames[i].Data());
 	}
 
 	while(kt::AtomicLoad32(&initCounter) != 0) {}
-
-	m_queueSignal.Signal();
-	m_queueSignal.Signal();
-	m_queueSignal.Signal();
-	m_queueSignal.Signal();
-
 }
 
 void TaskSystem::WaitAndShutdown()
 {
 	m_queueSignal.Signal();
-	kt::AtomicStore32((int32_t*)&m_keepRunning, 0);
+	kt::AtomicStore32(&m_keepRunning, 0);
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
 		while(m_threads[i].IsRunning()) { }
@@ -91,8 +86,7 @@ void TaskSystem::WaitAndShutdown()
 void TaskSystem::PushTask(Task* _task)
 {
 	{
-		m_queueMutex.Lock();
-		KT_SCOPE_EXIT(m_queueMutex.Unlock());
+		kt::ScopedLock<kt::Mutex> lk(m_queueMutex);
 
 		// split up task
 		uint32_t lastEnd = 0;
@@ -117,7 +111,7 @@ void TaskSystem::PushTask(Task* _task)
 
 			TaskPacket& p = m_packets[m_queueHead];
 			m_queueHead = (m_queueHead + 1) & QUEUE_MASK;
-			kt::AtomicFetchAdd32((int32_t*)&m_numEntriesInQueue, 1);
+			kt::AtomicFetchAdd32(&m_numEntriesInQueue, 1);
 			p.m_task = _task;
 			p.m_begin = lastEnd;
 			lastEnd = kt::Min(lastEnd + _task->m_granularity, _task->m_totalPartitions);
@@ -142,14 +136,13 @@ void TaskSystem::WaitForCounter(int32_t* _counter)
 		// Todo: duplicate code
 		bool popped = false;
 		{
-			m_queueMutex.Lock();
-			KT_SCOPE_EXIT(m_queueMutex.Unlock());
+			kt::ScopedLock<kt::Mutex> lk(m_queueMutex);
 
 			if (m_numEntriesInQueue)
 			{
 				packet = m_packets[m_queueTail];
 				m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-				kt::AtomicFetchAdd32((int32_t*)&m_numEntriesInQueue, -1);
+				kt::AtomicFetchAdd32(&m_numEntriesInQueue, -1);
 				popped = true;
 			}
 		}
@@ -162,7 +155,7 @@ void TaskSystem::WaitForCounter(int32_t* _counter)
 				kt::AtomicFetchAdd32(packet.m_task->m_taskCounter, -1);
 			}
 
-			if (kt::AtomicFetchAdd32((int32_t*)&packet.m_task->m_numCompletedPartitions, -1) == 0)
+			if (kt::AtomicFetchAdd32(&packet.m_task->m_numCompletedPartitions, -1) == 0)
 			{
 				// do anything?
 			}
@@ -194,7 +187,7 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 				{
 					packet = m_packets[m_queueTail];
 					m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-					kt::AtomicFetchAdd32((int32_t*)&m_numEntriesInQueue, -1);
+					kt::AtomicFetchAdd32(&m_numEntriesInQueue, -1);
 					popped = true;
 				}
 			}
@@ -207,7 +200,7 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 					kt::AtomicFetchAdd32(packet.m_task->m_taskCounter, -1);
 				}
 
-				if (kt::AtomicFetchAdd32((int32_t*)&packet.m_task->m_numCompletedPartitions, -1) == 0)
+				if (kt::AtomicFetchAdd32(&packet.m_task->m_numCompletedPartitions, -1) == 0)
 				{
 					// do anything?
 				}
