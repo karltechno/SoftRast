@@ -72,7 +72,11 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 
 void TaskSystem::WaitAndShutdown()
 {
-	m_queueSignal.Signal();
+	for (uint32_t i = 0; i < m_numWorkers; ++i)
+	{
+		m_queueSignal.Signal();
+	}
+
 	kt::AtomicStore32(&m_keepRunning, 0);
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
@@ -85,6 +89,7 @@ void TaskSystem::WaitAndShutdown()
 
 void TaskSystem::PushTask(Task* _task)
 {
+	uint32_t totalTasks = 0;
 	{
 		kt::ScopedLock<kt::Mutex> lk(m_queueMutex);
 
@@ -93,7 +98,7 @@ void TaskSystem::PushTask(Task* _task)
 
 		uint32_t tasksPushed = 0;
 
-		uint32_t const totalTasks = (_task->m_totalPartitions + _task->m_granularity - 1) / _task->m_granularity;
+		totalTasks = (_task->m_totalPartitions + _task->m_granularity - 1) / _task->m_granularity;
 
 		if (_task->m_taskCounter)
 		{
@@ -119,12 +124,16 @@ void TaskSystem::PushTask(Task* _task)
 		}
 		KT_ASSERT(totalTasks == tasksPushed);
 	}
-	m_queueSignal.Signal();
+
+	for (uint32_t i = 0; i < kt::Min(m_numWorkers, totalTasks); ++i)
+	{
+		m_queueSignal.Signal();
+	}
 }
 
 void TaskSystem::SyncAndWaitForAll()
 {
-
+	KT_ASSERT(false); // ?
 }
 
 void TaskSystem::WaitForCounter(int32_t* _counter)
@@ -207,7 +216,6 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 			}
 			else
 			{
-				m_queueSignal.Reset();
 				break;
 			}
 		}
