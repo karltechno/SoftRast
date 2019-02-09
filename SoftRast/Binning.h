@@ -54,6 +54,33 @@ struct BinChunk
 	uint32_t m_numTris = 0;
 };
 
+union Fragment
+{
+	struct
+	{
+		uint64_t x : 7;
+		uint64_t y : 7;
+		uint64_t drawCall : 16;
+		uint64_t triIdx : 16;
+
+		// Todo: more info? Potentially space for MSAA if we ever implement that.
+		// Could store block coverage to save some memory
+	};
+	uint64_t u64;
+};
+
+static uint32_t const MAX_FRAGMENTS_PER_BLOCK = 4096;
+
+struct FragmentBlock
+{
+	Fragment m_frags[MAX_FRAGMENTS_PER_BLOCK];
+
+	uint32_t m_numFrags = 0;
+
+	FragmentBlock* m_next = nullptr;
+};
+
+
 struct ThreadBin
 {
 	uint32_t m_drawCallIndicies[c_maxThreadBinChunks];
@@ -68,7 +95,7 @@ struct BinContext
 
 	void Init(uint32_t _numThreads, uint32_t _binsX, uint32_t _binsY);
 
-	ThreadBin& LookupThreadBin(uint32_t _tileX, uint32_t _tileY, uint32_t _threadIdx);
+	ThreadBin& LookupThreadBin(uint32_t _threadIdx, uint32_t _tileX, uint32_t _tileY);
 
 	ThreadBin* m_bins = nullptr;
 

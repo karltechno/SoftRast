@@ -82,8 +82,8 @@ void GatherPartialBlockState
 static void ShadePartialBlockAVX_8x8
 (
 	DrawCall const& _call,
-	DepthTile* _depth,
 	ColourTile* _colour,
+	DepthTile* _depth,
 	int32_t _xTileRelative,
 	int32_t _yTileRelative,
 	BlockInterpolants8x8& _block,
@@ -171,7 +171,7 @@ static void ShadePartialBlockAVX_8x8
 	}
 }
 
-void RasterTrisInBin(DrawCall const& _call, BinChunk const& _chunk, DepthTile* _depth, ColourTile* _colour)
+static void RasterTrisInBin(DrawCall const& _call, ColourTile* _colour, DepthTile* _depth, BinChunk const& _chunk)
 {
 	BlockInterpolants8x8 blockinterpolant;
 	EdgeEquations8x8 edges8x8;
@@ -226,10 +226,32 @@ void RasterTrisInBin(DrawCall const& _call, BinChunk const& _chunk, DepthTile* _
 				//if(e0_allOut == 0xF && e1_allOut == 0xF && e2_allOut == 0xF) // todo, full block
 
 				GatherPartialBlockState(blockinterpolant, edges8x8, _chunk, xBlock , yBlock, triIdx);
-				ShadePartialBlockAVX_8x8(_call, _depth, _colour, xBlock , yBlock, blockinterpolant, edges8x8);
+				ShadePartialBlockAVX_8x8(_call, _colour, _depth, xBlock , yBlock, blockinterpolant, edges8x8);
 			}
 		}
 	}
+}
+
+
+void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
+{
+	// TOdo: sort draw calls
+
+	for (uint32_t threadBinIdx = 0; threadBinIdx < _ctx.m_binner->m_numThreads; ++threadBinIdx)
+	{
+		ThreadBin& bin = _ctx.m_binner->LookupThreadBin(threadBinIdx, _ctx.m_tileX, _ctx.m_tileY);
+
+		for (uint32_t j = 0; j < bin.m_numChunks; ++j)
+		{
+			uint32_t tileIdx = _ctx.m_tileY * _ctx.m_binner->m_numBinsX + _ctx.m_tileX;
+			DrawCall& call = _ctx.m_drawCalls[bin.m_drawCallIndicies[j]];
+
+			RasterTrisInBin(call, &call.m_frameBuffer->m_colourTiles[tileIdx], &call.m_frameBuffer->m_depthTiles[tileIdx], *bin.m_binChunks[j]);
+		}
+
+	}
+
+
 }
 
 }

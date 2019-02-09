@@ -266,36 +266,21 @@ void RenderContext::EndFrame()
 				struct TileTaskData
 				{
 					Task t;
-					BinContext* binCtx;
-					DrawCall* drawCalls;
-					uint32_t tileX;
-					uint32_t tileY;
-					uint32_t numThreads;
+					ThreadRasterCtx rasterCtx;
 				};
 
 				auto tileRasterFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
 				{
 					TileTaskData* data = (TileTaskData*)_task->m_userData;
-					for (uint32_t i = 0; i < data->numThreads; ++i)
-					{
-						ThreadBin& bin = data->binCtx->LookupThreadBin(i, data->tileX, data->tileY);
-						for (uint32_t j = 0; j < bin.m_numChunks; ++j)
-						{
-							uint32_t tileIdx = data->tileY * data->binCtx->m_numBinsX + data->tileX;
-							DrawCall& call = data->drawCalls[bin.m_drawCallIndicies[j]];
-							RasterTrisInBin(call, *bin.m_binChunks[j], &call.m_frameBuffer->m_depthTiles[tileIdx], &call.m_frameBuffer->m_colourTiles[tileIdx]);
-						}
-
-					}
+					RasterAndShadeBin(data->rasterCtx);
 				};
 
 				TileTaskData* t = (TileTaskData*)KT_ALLOCA(sizeof(TileTaskData));
-				t->numThreads = m_binner.m_numThreads;
-				t->binCtx = &m_binner;
-				t->binCtx = &m_binner;
-				t->tileX = binX;
-				t->tileY = binY;
-				t->drawCalls = m_drawCalls.Data();
+				t->rasterCtx.m_binner = &m_binner;
+				t->rasterCtx.m_tileX = binX;
+				t->rasterCtx.m_tileY = binY;
+				t->rasterCtx.m_allocator = &m_allocator;
+				t->rasterCtx.m_drawCalls = m_drawCalls.Data();
 				t->t = Task(tileRasterFn, 1, 1, t);
 				t->t.m_taskCounter = &tileRasterCounter;
 				m_taskSystem.PushTask(&t->t);

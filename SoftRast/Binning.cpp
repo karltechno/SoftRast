@@ -342,46 +342,69 @@ static void BinTransformedAndClippedTri
 		SetupPlane(plane_eq_c, d10_raster, d20_raster, attrib_d10, attrib_d20, attribPlanes.dx[i], attribPlanes.dy[i]);
 	}
 
-	for (uint32_t binY = (ymin >> Config::c_binHeightLog2); binY <= (ymax >> Config::c_binHeightLog2); ++binY)
-	{
-		for (uint32_t binX = (xmin >> Config::c_binWidthLog2); binX <= (xmax >> Config::c_binWidthLog2); ++binX)
-		{
-			ThreadBin& bin = _ctx.LookupThreadBin(_threadIdx, binX, binY);
+	uint32_t const binYmin = ymin >> Config::c_binHeightLog2;
+	uint32_t const binYmax = ymax >> Config::c_binHeightLog2;
 
+	uint32_t const binXmax = xmax >> Config::c_binWidthLog2;
+	uint32_t const binXmin = xmin >> Config::c_binWidthLog2;
+
+	uint32_t const numYbins = binYmax - binYmin + 1;
+	uint32_t const numXbins = binYmax - binYmin + 1;
+
+	bool doTileCoverageCheck = true;
+
+	if (numYbins <= 2 && numXbins <= 2)
+	{
+		// 2x1 or 1x2 or 2x2.
+		// 2x1 and 1x2 must cover all bins.
+		// 2x2 common case straddling corner of 4 bins.
+		// In all these cases we just skip check and directly bin.
+		doTileCoverageCheck = false;
+	}
+
+	for (uint32_t binY = binYmin; binY <= binYmax; ++binY)
+	{
+		for (uint32_t binX = binXmin; binX <= binXmax; ++binX)
+		{
 			int32_t const binScreenX0 = binX * Config::c_binWidth;
 			int32_t const binScreenX1 = binScreenX0 + Config::c_binWidth;
 
 			int32_t const binScreenY0 = binY * Config::c_binHeight;
 			int32_t const binScreenY1 = binScreenY0 + Config::c_binHeight;
 
-			// Todo: slow, can offset edges and just test upper corner
-			int32_t const e0_x0y0 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY0;
-			int32_t const e0_x0y1 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY1;
-			int32_t const e0_x1y0 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY0;
-			int32_t const e0_x1y1 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY1;
-
-			uint32_t const e0_allOut = (e0_x0y0 > 0) | ((e0_x0y1 > 0) << 1) | ((e0_x1y0 > 0) << 2) | ((e0_x1y1 > 0) << 3);
-
-			int32_t const e1_x0y0 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY0;
-			int32_t const e1_x0y1 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY1;
-			int32_t const e1_x1y0 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY0;
-			int32_t const e1_x1y1 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY1;
-
-			uint32_t const e1_allOut = (e1_x0y0 > 0) | ((e1_x0y1 > 0) << 1) | ((e1_x1y0 > 0) << 2) | ((e1_x1y1 > 0) << 3);
-
-			int32_t const e2_x0y0 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY0;
-			int32_t const e2_x0y1 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY1;
-			int32_t const e2_x1y0 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY0;
-			int32_t const e2_x1y1 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY1;
-
-			uint32_t const e2_allOut = (e2_x0y0 > 0) | ((e2_x0y1 > 0) << 1) | ((e2_x1y0 > 0) << 2) | ((e2_x1y1 > 0) << 3);
-
-			if (!e0_allOut || !e1_allOut || !e2_allOut)
+			if (doTileCoverageCheck)
 			{
-				continue;
+				// Todo: slow, can offset edges and just test upper corner
+				int32_t const e0_x0y0 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY0;
+				int32_t const e0_x0y1 = edges.c[0] + edges.dy[0] * binScreenX0 + edges.dx[0] * binScreenY1;
+				int32_t const e0_x1y0 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY0;
+				int32_t const e0_x1y1 = edges.c[0] + edges.dy[0] * binScreenX1 + edges.dx[0] * binScreenY1;
+
+				uint32_t const e0_allOut = (e0_x0y0 > 0) | ((e0_x0y1 > 0) << 1) | ((e0_x1y0 > 0) << 2) | ((e0_x1y1 > 0) << 3);
+
+				int32_t const e1_x0y0 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY0;
+				int32_t const e1_x0y1 = edges.c[1] + edges.dy[1] * binScreenX0 + edges.dx[1] * binScreenY1;
+				int32_t const e1_x1y0 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY0;
+				int32_t const e1_x1y1 = edges.c[1] + edges.dy[1] * binScreenX1 + edges.dx[1] * binScreenY1;
+
+				uint32_t const e1_allOut = (e1_x0y0 > 0) | ((e1_x0y1 > 0) << 1) | ((e1_x1y0 > 0) << 2) | ((e1_x1y1 > 0) << 3);
+
+				int32_t const e2_x0y0 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY0;
+				int32_t const e2_x0y1 = edges.c[2] + edges.dy[2] * binScreenX0 + edges.dx[2] * binScreenY1;
+				int32_t const e2_x1y0 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY0;
+				int32_t const e2_x1y1 = edges.c[2] + edges.dy[2] * binScreenX1 + edges.dx[2] * binScreenY1;
+
+				uint32_t const e2_allOut = (e2_x0y0 > 0) | ((e2_x0y1 > 0) << 1) | ((e2_x1y0 > 0) << 2) | ((e2_x1y1 > 0) << 3);
+
+				if (!e0_allOut || !e1_allOut || !e2_allOut)
+				{
+					continue;
+				}
 			}
 
+
 			// todo full block
+			ThreadBin& bin = _ctx.LookupThreadBin(_threadIdx, binX, binY);
 
 			BinChunk& chunk = GetOrCreateBinForDrawCall(_alloc, _ctx, bin, _call);
 

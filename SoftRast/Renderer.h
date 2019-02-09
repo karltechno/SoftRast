@@ -54,7 +54,9 @@ struct FrameBuffer
 	uint32_t m_tilesX = 0;
 };
 
-using PixelShaderFn = void(*)(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask);
+using PixelShaderFn = void(*)(void const* i_uniforms, __m256 const i_varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& i_execMask);
+
+using AttributeShader = void(*)(void const* i_uniforms, void const* i_attribs, float* o_attribs);
 
 struct GenericDrawBuffer
 {
