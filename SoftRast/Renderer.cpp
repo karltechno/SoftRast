@@ -207,7 +207,7 @@ void RenderContext::EndFrame()
 	Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
 	BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
 
-	int32_t frontEndCounter = 0;
+	std::atomic<uint32_t> frontEndCounter = 0;
 
 	for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 	{
@@ -219,12 +219,13 @@ void RenderContext::EndFrame()
 			BinTrisEntry(data->ctx->m_binner, data->ctx->m_allocator, _threadIdx, _start, _end, *data->call);
 		};
 
-		Task* task = drawCallTasks + i;
 		BinTrisTaskData* taskData = drawCallTasksData + i;
+
+		Task* task = drawCallTasks + i;
+
+		kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData);
 		taskData->call = &draw;
 		taskData->ctx = this;
-
-		*task = Task(drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData);
 		task->m_taskCounter = &frontEndCounter;
 
 		m_taskSystem.PushTask(task);
@@ -237,7 +238,7 @@ void RenderContext::EndFrame()
 	uint32_t activeBins = 0;
 	uint32_t activeChunks = 0;
 
-	int32_t tileRasterCounter = 0;
+	std::atomic<uint32_t> tileRasterCounter = 0;
 
 	for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
 	{
@@ -281,7 +282,8 @@ void RenderContext::EndFrame()
 				t->rasterCtx.m_tileY = binY;
 				t->rasterCtx.m_allocator = &m_allocator;
 				t->rasterCtx.m_drawCalls = m_drawCalls.Data();
-				t->t = Task(tileRasterFn, 1, 1, t);
+				kt::PlacementNew(&t->t, tileRasterFn, 1, 1, t);
+
 				t->t.m_taskCounter = &tileRasterCounter;
 				m_taskSystem.PushTask(&t->t);
 #endif

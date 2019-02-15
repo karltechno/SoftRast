@@ -30,12 +30,12 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		kt::PlacementNew(m_threads + i);
 	}
 
-	int32_t initCounter = _numWorkers;
+	std::atomic<int32_t> initCounter = _numWorkers;
 	m_numWorkers = _numWorkers;
 
 	struct ThreadInitData
 	{
-		int32_t* initCounter;
+		std::atomic<int32_t>* initCounter;
 		uint32_t threadId;
 		TaskSystem* sys;
 	};
@@ -61,23 +61,24 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 			ThreadInitData* data = (ThreadInitData*)_self->GetUserData();
 			TaskSystem* sys = data->sys;
 			tls_threadIndex = data->threadId;
-			kt::AtomicFetchAdd32(data->initCounter, -1);
+			std::atomic_fetch_sub_explicit(data->initCounter, 1, std::memory_order_acquire);
 			sys->WorkerLoop(data->threadId);
 		}, 
 		&data, threadNames[i].Data());
 	}
-
-	while(kt::AtomicLoad32(&initCounter) != 0) {}
+	
+	while(std::atomic_load(&initCounter) != 0) {}
 }
 
 void TaskSystem::WaitAndShutdown()
 {
+	std::atomic_store_explicit(&m_keepRunning, 0, std::memory_order_relaxed);
+
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
 		m_queueSignal.Signal();
 	}
 
-	kt::AtomicStore32(&m_keepRunning, 0);
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
 		while(m_threads[i].IsRunning()) { }
@@ -85,6 +86,9 @@ void TaskSystem::WaitAndShutdown()
 
 	kt::Free(m_threads);
 	kt::Free(m_packets);
+
+	m_threads = nullptr;
+	m_packets = nullptr;
 }
 
 void TaskSystem::PushTask(Task* _task)
@@ -102,7 +106,7 @@ void TaskSystem::PushTask(Task* _task)
 
 		if (_task->m_taskCounter)
 		{
-			kt::AtomicFetchAdd32(_task->m_taskCounter, (int32_t)totalTasks);
+			std::atomic_fetch_add_explicit(_task->m_taskCounter, totalTasks, std::memory_order_acquire);
 		}
 
 		while (lastEnd < _task->m_totalPartitions)
@@ -116,7 +120,7 @@ void TaskSystem::PushTask(Task* _task)
 
 			TaskPacket& p = m_packets[m_queueHead];
 			m_queueHead = (m_queueHead + 1) & QUEUE_MASK;
-			kt::AtomicFetchAdd32(&m_numEntriesInQueue, 1);
+			std::atomic_fetch_add_explicit(&m_numEntriesInQueue, 1, std::memory_order_acquire);
 			p.m_task = _task;
 			p.m_begin = lastEnd;
 			lastEnd = kt::Min(lastEnd + _task->m_granularity, _task->m_totalPartitions);
@@ -136,9 +140,9 @@ void TaskSystem::SyncAndWaitForAll()
 	KT_ASSERT(false); // ?
 }
 
-void TaskSystem::WaitForCounter(int32_t* _counter)
+void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 {
-	while (kt::AtomicLoad32(_counter) > 0)
+	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
 	{
 		TaskPacket packet;
 
@@ -151,7 +155,7 @@ void TaskSystem::WaitForCounter(int32_t* _counter)
 			{
 				packet = m_packets[m_queueTail];
 				m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-				kt::AtomicFetchAdd32(&m_numEntriesInQueue, -1);
+				std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
 				popped = true;
 			}
 		}
@@ -161,10 +165,10 @@ void TaskSystem::WaitForCounter(int32_t* _counter)
 			packet.m_task->m_fn(packet.m_task, tls_threadIndex, packet.m_begin, packet.m_end);
 			if (packet.m_task->m_taskCounter)
 			{
-				kt::AtomicFetchAdd32(packet.m_task->m_taskCounter, -1);
+				std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
 			}
 
-			if (kt::AtomicFetchAdd32(&packet.m_task->m_numCompletedPartitions, -1) == 0)
+			if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
 			{
 				// do anything?
 			}
@@ -179,24 +183,24 @@ uint32_t TaskSystem::TotalThreadsIncludingMainThread()
 
 void TaskSystem::WorkerLoop(uint32_t _threadId)
 {
-	while (kt::AtomicLoad32(&m_keepRunning))
+	while (std::atomic_load_explicit(&m_keepRunning, std::memory_order_acquire))
 	{
 		m_queueSignal.Wait();
-		kt::AtomicFetchAdd32(&m_numActiveWorkers, 1);
+
+		std::atomic_fetch_add_explicit(&m_numActiveWorkers, 1, std::memory_order_acquire);
 
 		for (;;)
 		{
 			TaskPacket packet;
 			bool popped = false;
 			{
-				m_queueMutex.Lock();
-				KT_SCOPE_EXIT(m_queueMutex.Unlock());
+				kt::ScopedLock<kt::Mutex> mt(m_queueMutex);
 
-				if (m_numEntriesInQueue)
+				if (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_relaxed))
 				{
 					packet = m_packets[m_queueTail];
 					m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-					kt::AtomicFetchAdd32(&m_numEntriesInQueue, -1);
+					std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
 					popped = true;
 				}
 			}
@@ -206,10 +210,10 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 				packet.m_task->m_fn(packet.m_task, _threadId, packet.m_begin, packet.m_end);
 				if (packet.m_task->m_taskCounter)
 				{
-					kt::AtomicFetchAdd32(packet.m_task->m_taskCounter, -1);
+					std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
 				}
 
-				if (kt::AtomicFetchAdd32(&packet.m_task->m_numCompletedPartitions, -1) == 0)
+				if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
 				{
 					// do anything?
 				}
@@ -219,8 +223,7 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 				break;
 			}
 		}
-
-		kt::AtomicFetchAdd32(&m_numActiveWorkers, -1);
+		std::atomic_fetch_sub_explicit(&m_numActiveWorkers, 1, std::memory_order_release);
 	}
 }
 

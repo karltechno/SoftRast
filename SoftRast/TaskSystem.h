@@ -1,7 +1,9 @@
 #pragma once
 #include <stdint.h>
+
 #include "kt/LinearAllocator.h"
 #include "kt/Array.h"
+#include "kt/Concurrency.h"
 
 namespace sr
 {
@@ -27,12 +29,12 @@ struct Task
 	uint32_t m_granularity = 0;
 
 	// Number of partitions done
-	uint32_t m_numCompletedPartitions = 0;
+	std::atomic<uint32_t> m_numCompletedPartitions = 0;
 
 	// Total partitions.
 	uint32_t m_totalPartitions = 0;
 
-	int32_t* m_taskCounter = nullptr;
+	std::atomic<uint32_t>* m_taskCounter = nullptr;
 
 	// User defined data.
 	void* m_userData = nullptr;
@@ -66,7 +68,7 @@ public:
 
 	void SyncAndWaitForAll();
 
-	void WaitForCounter(int32_t* _counter);
+	void WaitForCounter(std::atomic<uint32_t>* _counter);
 
 	uint32_t TotalThreadsIncludingMainThread();
 
@@ -80,15 +82,15 @@ private:
 	
 	uint32_t m_queueHead = 0;
 	uint32_t m_queueTail = 0;
-	uint32_t m_numEntriesInQueue = 0;
+	std::atomic<uint32_t> m_numEntriesInQueue = 0;
 
 	// Todo: lock free
 	kt::Mutex m_queueMutex;
 	kt::Event m_queueSignal;
 
-	int32_t m_keepRunning = 1;
+	std::atomic<uint32_t> m_keepRunning = 1;
 
-	int32_t m_numActiveWorkers = 0;
+	std::atomic<uint32_t> m_numActiveWorkers = 0;
 };
 
 }
