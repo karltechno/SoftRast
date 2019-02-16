@@ -227,6 +227,7 @@ static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinCo
 	BinChunk* newChunk = (BinChunk*)_alloc.Alloc(sizeof(BinChunk), KT_ALIGNOF(BinChunk));
 	uint32_t const chunkIdx = _bin.m_numChunks++;
 	newChunk->m_numTris = 0;
+	newChunk->m_attribStride = _call.m_attributeBuffer.m_stride / sizeof(float);
 	_bin.m_drawCallIndicies[chunkIdx] = _call.m_drawCallIdx;
 	_bin.m_binChunks[chunkIdx] = newChunk;
 	return *newChunk;
@@ -313,12 +314,9 @@ static void BinTransformedAndClippedTri
 	xmax = (uint16_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[0], v1_fp[0]), v2_fp[0]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)width - 1);
 	ymax = (uint16_t)kt::Clamp(((kt::Max(kt::Max(v0_fp[1], v1_fp[1]), v2_fp[1]) + Config::c_subPixelMask) >> Config::c_subPixelBits), 0, (int32_t)height - 1);
 
-
-
 	SetupEdge(edges, 0, v0_fp, v1_fp);
 	SetupEdge(edges, 1, v1_fp, v2_fp);
 	SetupEdge(edges, 2, v2_fp, v0_fp);
-
 
 	kt::Vec2 const d10_raster = v1raster - v0raster;
 	kt::Vec2 const d20_raster = v2raster - v0raster;
@@ -333,13 +331,13 @@ static void BinTransformedAndClippedTri
 
 	SetupPlane(plane_eq_c, d10_raster, d20_raster, invW[1] - invW[0], invW[2] - invW[0], recipW_plane.dx, recipW_plane.dy);
 
-	BinChunk::AttribPlaneChunk attribPlanes;
+	BinChunk::PlaneEq attribPlanes[Config::c_maxVaryings];
 
 	for (uint32_t i = 0; i < _call.m_attributeBuffer.m_stride / sizeof(float); ++i)
 	{
 		float const attrib_d10 = _attribPtrs[1][i] * invW[1] - _attribPtrs[0][i] * invW[0];
 		float const attrib_d20 = _attribPtrs[2][i] * invW[2] - _attribPtrs[0][i] * invW[0];
-		SetupPlane(plane_eq_c, d10_raster, d20_raster, attrib_d10, attrib_d20, attribPlanes.dx[i], attribPlanes.dy[i]);
+		SetupPlane(plane_eq_c, d10_raster, d20_raster, attrib_d10, attrib_d20, attribPlanes[i].dx, attribPlanes[i].dy);
 	}
 
 	uint32_t const binYmin = ymin >> Config::c_binHeightLog2;
@@ -402,7 +400,6 @@ static void BinTransformedAndClippedTri
 				}
 			}
 
-
 			// todo full block
 			ThreadBin& bin = _ctx.LookupThreadBin(_threadIdx, binX, binY);
 
@@ -436,11 +433,13 @@ static void BinTransformedAndClippedTri
 			chunk.m_zOverW[chunkTriIdx] = zOverW_plane;
 			chunk.m_zOverW[chunkTriIdx].c0 = zOverW_plane.dx * screenV0dx + zOverW_plane.dy * screenV0dy + _v0.z * invW[0];
 
-			for (uint32_t i = 0; i < _call.m_attributeBuffer.m_stride / sizeof(float); ++i)
+			uint32_t const attribElementStride = chunk.m_attribStride;
+
+			for (uint32_t i = 0; i < attribElementStride; ++i)
 			{
-				chunk.m_attribs[chunkTriIdx].dx[i] = attribPlanes.dx[i];
-				chunk.m_attribs[chunkTriIdx].dy[i] = attribPlanes.dy[i];
-				chunk.m_attribs[chunkTriIdx].c0[i] = attribPlanes.dx[i] * screenV0dx + attribPlanes.dy[i] * screenV0dy + _attribPtrs[0][i] * invW[0];
+				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dx = attribPlanes[i].dx;
+				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dy = attribPlanes[i].dy;
+				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].c0 = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
 			}
 		}
 	}

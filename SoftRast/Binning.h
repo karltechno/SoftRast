@@ -20,8 +20,6 @@ struct BinChunk
 		int32_t dx[3];
 		int32_t dy[3];
 
-		// Todo: signed if we shift origin for guard band?
-
 		uint8_t blockMinX, blockMaxX;
 		uint8_t blockMinY, blockMaxY;
 
@@ -36,50 +34,20 @@ struct BinChunk
 		float dy;
 	};
 
-	struct AttribPlaneChunk
-	{
-		KT_ALIGNAS(32) float c0[Config::c_maxVaryings];
-		KT_ALIGNAS(32) float dx[Config::c_maxVaryings];
-		KT_ALIGNAS(32) float dy[Config::c_maxVaryings];
-	};
-
 	EdgeEq m_edgeEq[c_trisPerBinChunk];
 
 	PlaneEq m_recipW[c_trisPerBinChunk];
 
 	PlaneEq m_zOverW[c_trisPerBinChunk];
 
-	AttribPlaneChunk m_attribs[c_trisPerBinChunk];
+	PlaneEq m_attribPlanes[c_trisPerBinChunk * Config::c_maxVaryings];
 
+	uint32_t m_attribStride = 0;
 	uint32_t m_numTris = 0;
 };
 
-union Fragment
-{
-	struct
-	{
-		uint64_t x : 7;
-		uint64_t y : 7;
-		uint64_t drawCall : 16;
-		uint64_t triIdx : 16;
-
-		// Todo: more info? Potentially space for MSAA if we ever implement that.
-		// Could store block coverage to save some memory
-	};
-	uint64_t u64;
-};
 
 static uint32_t const MAX_FRAGMENTS_PER_BLOCK = 4096;
-
-struct FragmentBlock
-{
-	Fragment m_frags[MAX_FRAGMENTS_PER_BLOCK];
-
-	uint32_t m_numFrags = 0;
-
-	FragmentBlock* m_next = nullptr;
-};
-
 
 struct ThreadBin
 {
