@@ -81,7 +81,7 @@ void TaskSystem::WaitAndShutdown()
 
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
-		while(m_threads[i].IsRunning()) { }
+		m_threads[i].Join();
 	}
 
 	kt::Free(m_threads);
