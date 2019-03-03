@@ -30,12 +30,12 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		kt::PlacementNew(m_threads + i);
 	}
 
-	std::atomic<int32_t> initCounter = _numWorkers;
+	std::atomic<uint32_t> initCounter{ _numWorkers };
 	m_numWorkers = _numWorkers;
 
 	struct ThreadInitData
 	{
-		std::atomic<int32_t>* initCounter;
+		std::atomic<uint32_t>* initCounter;
 		uint32_t threadId;
 		TaskSystem* sys;
 	};

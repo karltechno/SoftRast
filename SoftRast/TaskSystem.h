@@ -19,7 +19,7 @@ struct Task
 	Task() = default;
 
 	Task(TaskFn _fn, uint32_t _numPartitions, uint32_t _granularity, void* _user)
-		: m_fn(_fn), m_totalPartitions(_numPartitions), m_granularity(_granularity), m_userData(_user)
+		: m_fn(_fn), m_granularity(_granularity),  m_numCompletedPartitions(0), m_totalPartitions(_numPartitions), m_userData(_user)
 	{}
 
 	// Task function
@@ -29,7 +29,7 @@ struct Task
 	uint32_t m_granularity = 0;
 
 	// Number of partitions done
-	std::atomic<uint32_t> m_numCompletedPartitions = 0;
+	std::atomic<uint32_t> m_numCompletedPartitions;
 
 	// Total partitions.
 	uint32_t m_totalPartitions = 0;
@@ -61,6 +61,12 @@ public:
 
 	static uint32_t TlsThreadIdx();
 
+	TaskSystem()
+		: m_numEntriesInQueue(0)
+		, m_keepRunning(1)
+		, m_numActiveWorkers(0)
+	{}
+
 	void InitFromMainThread(uint32_t const _numWorkers);
 	void WaitAndShutdown();
 
@@ -82,15 +88,15 @@ private:
 	
 	uint32_t m_queueHead = 0;
 	uint32_t m_queueTail = 0;
-	std::atomic<uint32_t> m_numEntriesInQueue = 0;
+	std::atomic<uint32_t> m_numEntriesInQueue;
 
 	// Todo: lock free
 	kt::Mutex m_queueMutex;
 	kt::Event m_queueSignal;
 
-	std::atomic<uint32_t> m_keepRunning = 1;
+	std::atomic<uint32_t> m_keepRunning;
 
-	std::atomic<uint32_t> m_numActiveWorkers = 0;
+	std::atomic<uint32_t> m_numActiveWorkers;
 };
 
 }
