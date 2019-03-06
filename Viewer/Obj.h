@@ -50,11 +50,14 @@ struct Material
 enum LoadFlags : uint32_t
 {
 	FlipWinding = 0x1,
-	GenNormals = 0x2 // todo
+	GenNormals = 0x2, // todo
+	FlipUVs = 0x4
 };
 
 struct Model
 {
+	~Model();
+
 	bool Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t const _flags);
 	void Clear();
 

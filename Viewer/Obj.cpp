@@ -38,11 +38,11 @@ struct MeshParserState
 {
 	MeshParserState(kt::IAllocator* _tempAllocator)
 		: m_faceMap(_tempAllocator)
+		, m_tempVerticies(_tempAllocator)
+		, m_tempIndexBuffer(_tempAllocator)
 		, m_tempPos(_tempAllocator)
 		, m_tempUv(_tempAllocator)
 		, m_tempNormal(_tempAllocator)
-		, m_tempVerticies(_tempAllocator)
-		, m_tempIndexBuffer(_tempAllocator)
 	{
 		m_faceMap.Reserve(4096);
 		m_tempPos.Reserve(2048);
@@ -62,7 +62,6 @@ struct MeshParserState
 		}
 
 		m->m_indexType = m_tempVerticies.Size() > UINT16_MAX ? IndexType::u32 : IndexType::u16;
-		uint32_t const idxSize = m->m_indexType == IndexType::u32 ? 4 : 2;
 
 		if (m->m_indexType == IndexType::u32)
 		{
@@ -106,7 +105,7 @@ static char* StripWhiteSpaceAndNewLine(char* _buff)
 {
 	char* ret = _buff;
 	// strip preceding whitespace
-	while (*ret && *ret == ' ' || *ret == '\t') { ++ret; }
+	while (*ret && (*ret == ' ' || *ret == '\t')) { ++ret; }
 
 	char* temp = ret;
 
@@ -327,6 +326,19 @@ static void ParseMaterial(FILE* _file, Model& _model, kt::FilePath const& _rootP
 	}
 }
 
+Model::~Model()
+{
+	for (Mesh& m : m_meshes)
+	{
+		m.Clear();
+	}
+
+	for (Material& mat : m_materials)
+	{
+		mat.m_diffuse.Clear();
+	}
+}
+
 bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  const _flags)
 {
 	FILE* f = fopen(_path, "r");
@@ -372,11 +384,17 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 					// uv coord			
 					float* readUv = (float*)parserState.m_tempUv.PushBack_Raw();
 					int numRead = sscanf(line + 3, "%f %f", readUv, readUv + 1);
+
 					if (numRead != 2)
 					{
 						KT_LOG_ERROR("Failed to parse obj, Bad uv coord!");
 						Clear();
 						return false;
+					}
+
+					if (_flags & LoadFlags::FlipUVs)
+					{
+						readUv[1] = 1.0f - readUv[1];
 					}
 				}
 				else if (line[1] == 'n')
