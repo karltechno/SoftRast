@@ -3,6 +3,7 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
+#include <immintrin.h>
 
 namespace sr
 {
@@ -15,7 +16,7 @@ LRESULT CALLBACK Window_Win32::WndProcHook(HWND _hwnd, UINT _msg, WPARAM _wparam
 		case WM_NCCREATE:
 		{
 			CREATESTRUCT* create = (CREATESTRUCT*)_lparam;
-			LONG_PTR ret = ::SetWindowLongPtr(_hwnd, GWLP_USERDATA, (LPARAM)create->lpCreateParams);
+			::SetWindowLongPtr(_hwnd, GWLP_USERDATA, (LPARAM)create->lpCreateParams);
 			return TRUE;
 		} break;
 
@@ -111,6 +112,7 @@ void Window_Win32::Flip()
 
 
 	BOOL ok = ::BitBlt(m_windowHDC, 0, 0, m_width, m_height, m_backBufferHDC, 0, 0, SRCCOPY);
+	KT_UNUSED(ok);
 	KT_ASSERT(ok == TRUE);
 }
 

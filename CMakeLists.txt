@@ -6,14 +6,22 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /DEBUG")
 endif()
 
-if((CMAKE_CXX_COMPILER_ID MATCHES "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    add_compile_options(-mavx2)
-	add_compile_options(-ffast-math)
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+if((CMAKE_SYSTEM_NAME MATCHES "Windows") AND (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+    set(CLANG_ON_WINDOWS TRUE)
+else()
+    set(CLANG_ON_WINDOWS FALSE)
+endif()
+
+
+if(CMAKE_CXX_COMPILER_D MATCHES "MSVC" OR CLANG_ON_WINDOWS)
     add_compile_options(/arch:AVX2)
 	add_compile_options(/fp:fast)
 	add_compile_options(/Oi)
+elseif((CMAKE_CXX_COMPILER_ID MATCHES "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+    add_compile_options(-mavx2)
+	add_compile_options(-ffast-math)
 endif()
+
 
 add_subdirectory("kt")
 add_subdirectory("SoftRast")
