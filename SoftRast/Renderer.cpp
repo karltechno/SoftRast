@@ -89,15 +89,25 @@ void FrameBuffer::BlitDepth(uint8_t* _linearFramebuffer)
 
 DrawCall::DrawCall()
 	: m_colourWrite(1)
-	, m_depthRead(1)
 	, m_depthWrite(1)
+	, m_depthRead(1)
 {
 }
 
-DrawCall& DrawCall::SetPixelShader(PixelShaderFn _fn, void const* _uniform)
+
+DrawCall& DrawCall::SetVertexShader(VertexShaderFn* _fn, void const* _uniforms, uint32_t const _outAttributeStrideBytes)
+{
+	KT_ASSERT(_outAttributeStrideBytes <= Config::c_maxVaryings * sizeof(float));
+	m_vertexShader = _fn;
+	m_vertexUniforms = _uniforms;
+	m_outAttributeStrideBytes = _outAttributeStrideBytes;
+	return *this;
+}
+
+DrawCall& DrawCall::SetPixelShader(PixelShaderFn _fn, void const* _uniforms)
 {
 	m_pixelShader = _fn;
-	m_pixelUniforms = _uniform;
+	m_pixelUniforms = _uniforms;
 	return *this;
 }
 
@@ -140,11 +150,10 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 
 RenderContext::RenderContext()
 {
-	// todo: hard coded
-	//m_taskSystem.InitFromMainThread(1);
 	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
 
 	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
+	// Todo: frame buffer size hardcoded!!
 	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
 
 }
@@ -207,7 +216,7 @@ void RenderContext::EndFrame()
 	Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
 	BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
 
-	std::atomic<uint32_t> frontEndCounter = 0;
+	std::atomic<uint32_t> frontEndCounter(0);
 
 	for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 	{
@@ -235,10 +244,7 @@ void RenderContext::EndFrame()
 
 	m_taskSystem.WaitForCounter(&frontEndCounter);
 
-	uint32_t activeBins = 0;
-	uint32_t activeChunks = 0;
-
-	std::atomic<uint32_t> tileRasterCounter = 0;
+	std::atomic<uint32_t> tileRasterCounter{ 0 };
 
 	for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
 	{
@@ -282,6 +288,7 @@ void RenderContext::EndFrame()
 				t->rasterCtx.m_tileY = binY;
 				t->rasterCtx.m_allocator = &m_allocator;
 				t->rasterCtx.m_drawCalls = m_drawCalls.Data();
+				t->rasterCtx.m_numDrawCalls = m_drawCalls.Size();
 				kt::PlacementNew(&t->t, tileRasterFn, 1, 1, t);
 
 				t->t.m_taskCounter = &tileRasterCounter;
@@ -293,7 +300,6 @@ void RenderContext::EndFrame()
 	}
 
 	m_taskSystem.WaitForCounter(&tileRasterCounter);
-	KT_LOG_INFO("%u bins, %u chunks", activeBins, activeChunks);
 }
 
 

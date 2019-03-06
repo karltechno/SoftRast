@@ -62,8 +62,6 @@ static uint8_t ComputeClipMask(kt::Vec4 const& _v)
 // Each frustum plane can turn a point into an edge (1 vert -> 2 verts). Therefore each clip plane can add 1 vertex. 9 total (including 3 from initial tri)
 constexpr uint32_t CLIP_VERT_BUFFER_SIZE = 3 + 6;
 
-constexpr uint32_t CLIP_OUT_MAX_TRIS = (CLIP_VERT_BUFFER_SIZE - 2);
-
 struct ClipBuffer
 {
 	float attribs[2][CLIP_VERT_BUFFER_SIZE][Config::c_maxVaryings];
@@ -217,7 +215,7 @@ KT_FORCEINLINE static void FetchAttribPointers(DrawCall const& _call, uint32_t c
 static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinContext& _ctx, ThreadBin& _bin, DrawCall const& _call)
 {
 	if (_bin.m_numChunks
-		&& _bin.m_drawCallIndicies[_bin.m_numChunks - 1] == _call.m_drawCallIdx
+		&& _bin.m_binChunks[_bin.m_numChunks - 1]->m_drawCallIdx == _call.m_drawCallIdx
 		&& _bin.m_binChunks[_bin.m_numChunks - 1]->m_numTris < c_trisPerBinChunk)
 	{
 		return *_bin.m_binChunks[_bin.m_numChunks - 1];
@@ -227,8 +225,8 @@ static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinCo
 	BinChunk* newChunk = (BinChunk*)_alloc.Alloc(sizeof(BinChunk), KT_ALIGNOF(BinChunk));
 	uint32_t const chunkIdx = _bin.m_numChunks++;
 	newChunk->m_numTris = 0;
-	newChunk->m_attribStride = _call.m_attributeBuffer.m_stride / sizeof(float);
-	_bin.m_drawCallIndicies[chunkIdx] = _call.m_drawCallIdx;
+	newChunk->m_attribsPerTri = _call.m_attributeBuffer.m_stride / sizeof(float);
+	newChunk->m_drawCallIdx = _call.m_drawCallIdx;
 	_bin.m_binChunks[chunkIdx] = newChunk;
 	return *newChunk;
 }
@@ -241,7 +239,7 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
 
 	// Left/horizontal fill rule
-	if (dy < 0 || dx == 0 && dy > 0)
+	if (dy < 0 || (dx == 0 && dy > 0))
 	{
 		c += 1;
 	}
@@ -433,13 +431,18 @@ static void BinTransformedAndClippedTri
 			chunk.m_zOverW[chunkTriIdx] = zOverW_plane;
 			chunk.m_zOverW[chunkTriIdx].c0 = zOverW_plane.dx * screenV0dx + zOverW_plane.dy * screenV0dy + _v0.z * invW[0];
 
-			uint32_t const attribElementStride = chunk.m_attribStride;
+			uint32_t const attribElementStride = chunk.m_attribsPerTri;
 
 			for (uint32_t i = 0; i < attribElementStride; ++i)
 			{
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dx = attribPlanes[i].dx;
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dy = attribPlanes[i].dy;
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].c0 = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
+				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dx = attribPlanes[i].dx;
+				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dy = attribPlanes[i].dy;
+				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].c0 = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
+
+				chunk.m_attribsDx[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx;
+				chunk.m_attribsDy[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dy;
+				chunk.m_attribsC[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
+
 			}
 		}
 	}

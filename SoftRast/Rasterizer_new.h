@@ -19,6 +19,7 @@ struct ThreadRasterCtx
 
 	BinContext* m_binner = nullptr;
 
+	uint32_t m_numDrawCalls = 0;
 	uint32_t m_tileX = 0;
 	uint32_t m_tileY = 0;
 };

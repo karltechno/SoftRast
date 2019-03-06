@@ -12,6 +12,7 @@
 #include "Input.h"
 #include "kt/FilePath.h"
 #include "Renderer.h"
+#include "kt/StackTrace.h"
 
 
 template <typename T>
@@ -32,7 +33,7 @@ struct UniformTest
 	sr::Tex::TextureData const* diffuse;
 };
 
-void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 	
@@ -45,8 +46,16 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 	// todo should pass in float ptr?
 	KT_ALIGNAS(32) float u[8];
 	KT_ALIGNAS(32) float v[8];
-	_mm256_store_ps(u, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float)]);
-	_mm256_store_ps(v, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float) + 1]);
+
+	uint32_t const uOffs = offsetof(sr::Obj::Vertex, uv) / sizeof(float);
+	uint32_t const vOffs = 1 + offsetof(sr::Obj::Vertex, uv) / sizeof(float);
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		u[i] = _varyings[i * sizeof(sr::Obj::Vertex) + uOffs];
+		v[i] = _varyings[i * sizeof(sr::Obj::Vertex) + vOffs];
+	}
+
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
@@ -54,7 +63,7 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 	}
 }
 
-void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
 
 	// todo should pass in float ptr?
@@ -63,30 +72,19 @@ void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::
 	uint32_t const greenOffset = redOffset + 1;
 	uint32_t const blueOffset = greenOffset + 1;
 
-	__m256 const half = _mm256_set1_ps(0.5f);
-
-	__m256 const red = _mm256_fmadd_ps(_varyings[redOffset], half, half);
-	__m256 const green = _mm256_fmadd_ps(_varyings[greenOffset], half, half);
-	__m256 const blue = _mm256_fmadd_ps(_varyings[blueOffset], half, half);
-
-	KT_ALIGNAS(32) float red_store[8];
-	KT_ALIGNAS(32) float green_store[8];
-	KT_ALIGNAS(32) float blue_store[8];
-	_mm256_store_ps(red_store, red);
-	_mm256_store_ps(green_store, green);
-	_mm256_store_ps(blue_store, blue);
-
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		o_colour[i * 4 + 0] = red_store[i];
-		o_colour[i * 4 + 1] = green_store[i];
-		o_colour[i * 4 + 2] = blue_store[i];
+		o_colour[i * 4 + 0] = _varyings[i * sizeof(sr::Obj::Vertex) + redOffset] * 0.5f + 0.5f;
+		o_colour[i * 4 + 1] = _varyings[i * sizeof(sr::Obj::Vertex) + greenOffset] * 0.5f + 0.5f;
+		o_colour[i * 4 + 2] = _varyings[i * sizeof(sr::Obj::Vertex) + blueOffset] * 0.5f + 0.5f;
 		o_colour[i * 4 + 3] = 0xFF;
 	}
 }
 
 int main(int argc, char** argv)
 {
+
+
 	sr::input::Init();
 	sr::Window_Win32 window("SoftRast", 1280, 720);
 
@@ -100,8 +98,6 @@ int main(int argc, char** argv)
 
 	sr::Raster::DepthBuffer depthBuff;
 	depthBuff.Init(kt::GetDefaultAllocator(), 1280, 720);
-
-	kt::Mat4 perspMtx = kt::Mat4::PerspectiveLH_ZO(kt::ToRadians(85.0f), 1280.0f / 720.0f, 0.01f, 1000.0f);
 
 	sr::FreeCamController controller;
 	
@@ -119,10 +115,8 @@ int main(int argc, char** argv)
 	sr::Obj::Model model;
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-
-	kt::FilePath const f = kt::FilePath::WorkingDirectory();
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
 

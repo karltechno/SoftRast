@@ -1,5 +1,7 @@
 #include "Rasterizer.h"
 
+#include <immintrin.h>
+
 #include <kt/Vec4.h>
 #include <kt/Vec3.h>
 #include <kt/Mat4.h>
@@ -67,7 +69,7 @@ struct EdgeConstants
 		dx_rasterCoord = (_v0[0] - _v1[0]);
 
 		// Left/horizontal fill rule
-		if (dy_rasterCoord < 0 || dx_rasterCoord == 0 && dy_rasterCoord > 0)
+		if (dy_rasterCoord < 0 || (dx_rasterCoord == 0 && dy_rasterCoord > 0))
 		{
 			c += 1;
 		}
@@ -118,7 +120,7 @@ struct RasterEdgeConstants
 		dx = (_v0[0] - _v1[0]);
 
 		// Left/horizontal fill rule
-		if (dy < 0 || dx == 0 && dy > 0)
+		if (dy < 0 || (dx == 0 && dy > 0))
 		{
 			c += 1;
 		}
@@ -235,8 +237,6 @@ static void ShadeWholeBlock
 			if (*depthPtr > recipZ && recipZ > 0.0f)
 			{
 				*depthPtr = recipZ;
-				uint8_t thecol = (uint8_t)(255 * (1.0f - fmodf(kt::Min(v2_persp, kt::Min(v0_persp, v1_persp)), 0.15f)));
-
 				float const* vary0 = _tri.verts[0].varyings;
 				float const* vary1 = _tri.verts[1].varyings;
 				float const* vary2 = _tri.verts[2].varyings;
@@ -286,8 +286,6 @@ static void RasterizePartialBlockSIMD_8x8
 	__m256 const recipW_v2 = _mm256_broadcast_ss(&_tri.verts[2].recipW);
 
 	__m256 const one256 = _mm256_set1_ps(1.0f);
-
-	__m256i const minusOne256 = _mm256_set1_epi32(-1);
 
 	for (int32_t y = _yminRaster; y < (_yminRaster + c_blockSize); ++y)
 	{
@@ -565,7 +563,8 @@ static void RasterizeWholeBlockSIMD_8x8_WithShader
 			
 			KT_ALIGNAS(32) float colourRGBA[4 * 8];
 
-			_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
+			// FUCK
+			//_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
 
 			for (uint32_t pixIdx = 0; pixIdx < c_blockSize; ++pixIdx)
 			{
@@ -668,8 +667,8 @@ static void RasterizePartialBlockSIMD_8x8_WithShader
 				}
 
 				KT_ALIGNAS(32) float colourRGBA[4 * 8];
-
-				_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
+				// BROKE
+				// _call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
 
 				for (uint32_t pixIdx = 0; pixIdx < c_blockSize; ++pixIdx)
 				{
@@ -914,7 +913,6 @@ static void RasterTransformedTri_WithBlocksAndShader(RasterContext const& _ctx, 
 
 			int32_t const e2_blockeval = (e2_x0y0 | e2_x0y1 | e2_x1y0 | e2_x1y1);
 
-			static bool s_doSimd = true;
 
 			if ((e0_blockeval | e1_blockeval | e2_blockeval) > 0)
 			{
@@ -982,7 +980,6 @@ static void RasterTransformedTri(FrameBuffer& _buffer, DepthBuffer& _depthBuffer
 				if (*depthPtr > recipZ && recipZ > 0.0f)
 				{
 					*depthPtr = recipZ;
-					uint8_t thecol = (uint8_t)(255 * (1.0f - fmodf(kt::Min(v2_persp, kt::Min(v0_persp, v1_persp)), 0.15f)));
 
 					float const* vary0 = _tri.verts[0].varyings;
 					float const* vary1 = _tri.verts[1].varyings;
@@ -1077,10 +1074,6 @@ static bool SetupTri(PipelineVert const& _v0, PipelineVert const& _v1, PipelineV
 	int32_t const v0_fp[2] = { int32_t(v0raster.x * Config::c_subPixelStep + 0.5f), int32_t(v0raster.y * Config::c_subPixelStep + 0.5f) };
 	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
 	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
-
-	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
-	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
-	int32_t const e2_fp[2] = { v0_fp[0] - v2_fp[0], v0_fp[1] - v2_fp[1] };
 
 	int32_t xmin, ymin;
 	int32_t xmax, ymax;
@@ -1262,7 +1255,6 @@ void ClipAndSetup(PipelineVert clipSpaceVerts[3], PipelineTri o_tris[CLIP_OUT_TR
 	for (uint32_t i = 2; i < numInputVerts; ++i)
 	{
 		KT_ASSERT(o_numOutTris <= CLIP_OUT_TRI_BUFF_SIZE);
-		PipelineTri& tri = o_tris[o_numOutTris];
 		if (SetupTri(input[0], input[i - 1], input[i], o_tris[o_numOutTris], 1280, 720)) // ahhh hardcoded
 		{
 			++o_numOutTris;
@@ -1295,10 +1287,6 @@ void RasterClippedTri(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Vec4 
 	int32_t const v0_fp[2] = { int32_t(v0raster.x * Config::c_subPixelStep + 0.5f), int32_t(v0raster.y * Config::c_subPixelStep + 0.5f) };
 	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
 	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
-
-	int32_t const e0_fp[2] = { v1_fp[0] - v0_fp[0], v1_fp[1] - v0_fp[1] };
-	int32_t const e1_fp[2] = { v2_fp[0] - v1_fp[0], v2_fp[1] - v1_fp[1] };
-	int32_t const e2_fp[2] = { v0_fp[0] - v2_fp[0], v0_fp[1] - v2_fp[1] };
 
 	int32_t xmin, ymin;
 	int32_t xmax, ymax;
@@ -1476,6 +1464,11 @@ void DrawSerial_Test(FrameBuffer& _buffer, DepthBuffer& _depthBuffer, kt::Mat4 c
 			idx0 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i];
 			idx1 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i + 1];
 			idx2 = (uint32_t)((uint16_t*)_call.m_indexBuffer.m_ptr)[i + 2];
+		}
+		else
+		{
+			KT_ASSERT(false);
+			idx0 = idx1 = idx2 = 0;
 		}
 
 		KT_ASSERT(idx0 < _call.m_positionBuffer.m_num);

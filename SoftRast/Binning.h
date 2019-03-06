@@ -40,18 +40,21 @@ struct BinChunk
 
 	PlaneEq m_zOverW[c_trisPerBinChunk];
 
-	PlaneEq m_attribPlanes[c_trisPerBinChunk * Config::c_maxVaryings];
+	//PlaneEq m_attribPlanes[c_trisPerBinChunk * Config::c_maxVaryings];
 
-	uint32_t m_attribStride = 0;
+	KT_ALIGNAS(32) float m_attribsDx[c_trisPerBinChunk * Config::c_maxVaryings];
+	KT_ALIGNAS(32) float m_attribsDy[c_trisPerBinChunk * Config::c_maxVaryings];
+	KT_ALIGNAS(32) float m_attribsC[c_trisPerBinChunk * Config::c_maxVaryings];
+
+	uint32_t m_attribsPerTri = 0;
 	uint32_t m_numTris = 0;
+
+	// Todo: we waste a lot of space like this, need to have multiple draw calls in one chunk.
+	uint32_t m_drawCallIdx;
 };
-
-
-static uint32_t const MAX_FRAGMENTS_PER_BLOCK = 4096;
 
 struct ThreadBin
 {
-	uint32_t m_drawCallIndicies[c_maxThreadBinChunks];
 	BinChunk* m_binChunks[c_maxThreadBinChunks];
 
 	uint32_t m_numChunks = 0;

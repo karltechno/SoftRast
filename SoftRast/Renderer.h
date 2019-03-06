@@ -54,9 +54,9 @@ struct FrameBuffer
 	uint32_t m_tilesX = 0;
 };
 
-using PixelShaderFn = void(*)(void const* i_uniforms, __m256 const i_varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& i_execMask);
+using PixelShaderFn = void(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask);
 
-using AttributeShader = void(*)(void const* i_uniforms, void const* i_attribs, float* o_attribs);
+using VertexShaderFn = void(kt::Vec3 const& _vtx, void const* i_uniforms, void const* i_attribs, float* o_attribs);
 
 struct GenericDrawBuffer
 {
@@ -69,14 +69,19 @@ struct DrawCall
 {
 	DrawCall();
 
-	DrawCall& SetPixelShader(PixelShaderFn _fn, void const* _uniform);
+	DrawCall& SetVertexShader(VertexShaderFn* _fn, void const* _uniforms, uint32_t const _outAttributeStrideBytes);
+	DrawCall& SetPixelShader(PixelShaderFn* _fn, void const* _uniforms);
 	DrawCall& SetIndexBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetPositionBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetFrameBuffer(FrameBuffer const* _buffer);
 	DrawCall& SetMVP(kt::Mat4 const& _mvp);
 
-	PixelShaderFn m_pixelShader = nullptr;
+	VertexShaderFn* m_vertexShader = nullptr;
+	void const* m_vertexUniforms = nullptr;
+	uint32_t m_outAttributeStrideBytes = 0;
+
+	PixelShaderFn* m_pixelShader = nullptr;
 	void const* m_pixelUniforms = nullptr;
 
 	GenericDrawBuffer m_indexBuffer;
