@@ -62,8 +62,6 @@ static uint8_t ComputeClipMask(kt::Vec4 const& _v)
 // Each frustum plane can turn a point into an edge (1 vert -> 2 verts). Therefore each clip plane can add 1 vertex. 9 total (including 3 from initial tri)
 constexpr uint32_t CLIP_VERT_BUFFER_SIZE = 3 + 6;
 
-constexpr uint32_t CLIP_OUT_MAX_TRIS = (CLIP_VERT_BUFFER_SIZE - 2);
-
 struct ClipBuffer
 {
 	float attribs[2][CLIP_VERT_BUFFER_SIZE][Config::c_maxVaryings];
@@ -241,7 +239,7 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
 
 	// Left/horizontal fill rule
-	if (dy < 0 || dx == 0 && dy > 0)
+	if (dy < 0 || (dx == 0 && dy > 0))
 	{
 		c += 1;
 	}

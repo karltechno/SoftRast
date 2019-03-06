@@ -207,7 +207,7 @@ void RenderContext::EndFrame()
 	Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
 	BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
 
-	std::atomic<uint32_t> frontEndCounter = 0;
+	std::atomic<uint32_t> frontEndCounter{ 0 };
 
 	for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 	{
@@ -238,7 +238,7 @@ void RenderContext::EndFrame()
 	uint32_t activeBins = 0;
 	uint32_t activeChunks = 0;
 
-	std::atomic<uint32_t> tileRasterCounter = 0;
+	std::atomic<uint32_t> tileRasterCounter{ 0 };
 
 	for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
 	{
