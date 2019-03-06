@@ -182,7 +182,7 @@ static void ShadePartialBlockAVX_8x8
 					interpolants[i] = _mm256_mul_ps(_block.attrib_eval[i], w);
 				}
 
-				// FUCK
+				// BROKEN
 				//_call.m_pixelShader(_call.m_pixelUniforms, interpolants, colourRGBA, depthCmpMask);
 
 				uint8_t* pixelBegin = &_colour->m_colour[(4 * _xTileRelative) + (_yTileRelative + i) * Config::c_binWidth * 4];

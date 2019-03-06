@@ -563,7 +563,7 @@ static void RasterizeWholeBlockSIMD_8x8_WithShader
 			
 			KT_ALIGNAS(32) float colourRGBA[4 * 8];
 
-			// FUCK
+			// BROKEN
 			//_call.m_pixelShader(_call.m_pixelUniforms, rowVaryings, colourRGBA, depthCmpMask);
 
 			for (uint32_t pixIdx = 0; pixIdx < c_blockSize; ++pixIdx)
