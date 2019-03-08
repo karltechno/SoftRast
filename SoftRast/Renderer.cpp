@@ -293,7 +293,7 @@ void RenderContext::EndFrame()
 	}
 
 	m_taskSystem.WaitForCounter(&tileRasterCounter);
-	KT_LOG_INFO("%u bins, %u chunks", activeBins, activeChunks);
+	//KT_LOG_INFO("%u bins, %u chunks", activeBins, activeChunks);
 }
 
 
