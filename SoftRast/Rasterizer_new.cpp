@@ -256,7 +256,7 @@ static uint64_t ComputeBlockMask8x8
 	__m256i const xTileSimd = _mm256_set1_epi32(_xTileRelative);
 	__m256i const yTileSimd = _mm256_set1_epi32(_yTileRelative);
 
-	__m256 zOverW = _mm256_mul_ps(_mm256_cvtepi32_ps(yTileSimd), _zOverW.dy);
+	__m256 zOverW = _mm256_fmadd_ps(_mm256_cvtepi32_ps(yTileSimd), _zOverW.dy, _zOverW.tileTopLeft);
 	zOverW = _mm256_add_ps(zOverW, _mm256_mul_ps(_mm256_cvtepi32_ps(xTileSimd), _zOverW.dx));
 
 	// offset from top left tile to this 8x8 block
