@@ -24,8 +24,17 @@ struct FragmentBuffer
 		uint16_t x : 7;
 		uint16_t y : 7;
 		uint16_t flags : 2;
-		uint16_t chunkIdx;
-		uint16_t triIdx;
+
+		union 
+		{
+			struct  
+			{
+				uint16_t chunkIdx;
+				uint16_t triIdx;
+			};
+			uint32_t packedChunkTriIdx;
+		};
+
 	};
 
 	static_assert((1 << 7) <= Config::c_binHeight, "Cant fit height in 7 bits");
@@ -493,8 +502,8 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 
 		for (;;)
 		{
-			uint32_t curChunkIdx = frag->chunkIdx;
-			uint32_t curTriIdx = frag->triIdx;
+			uint32_t packedTriChunkIdx = frag->packedChunkTriIdx;
+
 			BinChunk const& chunk = *_chunks[frag->chunkIdx];
 			uint32_t curDrawCallIdx = chunk.m_drawCallIdx;
 
@@ -508,9 +517,9 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 
 			for (uint32_t i = 0; i < numAttribsAvx; ++i)
 			{
-				attribPlaneDx[i] = _mm256_load_ps(&chunk.m_attribsDx[i * 8 + chunk.m_attribsPerTri * frag->triIdx]);
-				attribPlaneDy[i] = _mm256_load_ps(&chunk.m_attribsDy[i * 8 + chunk.m_attribsPerTri * frag->triIdx]);
-				attribPlaneC[i] = _mm256_load_ps(&chunk.m_attribsC[i * 8 + chunk.m_attribsPerTri * frag->triIdx]);
+				attribPlaneDx[i] = _mm256_load_ps(&chunk.m_attribsDx[i * 8 + numAttribs * frag->triIdx]);
+				attribPlaneDy[i] = _mm256_load_ps(&chunk.m_attribsDy[i * 8 + numAttribs * frag->triIdx]);
+				attribPlaneC[i] = _mm256_load_ps(&chunk.m_attribsC[i * 8 + numAttribs * frag->triIdx]);
 			}
 
 			static_assert(Config::c_maxVaryings <= 16, "SIMD code assumed maxvaryings <= 16.");
@@ -533,8 +542,7 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 				frag = &_buffer.m_fragments[fragIdx++];
 
 			} while (fragIdx < _buffer.m_numFragments
-					 && frag->chunkIdx == curChunkIdx
-					 && frag->triIdx == curTriIdx);
+					 && frag->packedChunkTriIdx == packedTriChunkIdx);
 
 			if (fragIdx >= _buffer.m_numFragments)
 			{
@@ -559,9 +567,11 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 		{
 			KT_ALIGNAS(32) float colourRGBA[4 * 8];
 			call.m_pixelShader(call.m_pixelUniforms, interpolants, colourRGBA, _mm256_setzero_ps());
-			interpolants += call.m_attributeBuffer.m_stride / sizeof(float);
 
 			uint32_t const writePixels = kt::Min(8u, numFragsForCall - drawCallFrag);
+
+			interpolants += writePixels * (call.m_attributeBuffer.m_stride / sizeof(float));
+
 			for (uint32_t i = 0; i < writePixels; ++i)
 			{
 				FragmentBuffer::Frag const& frag = _buffer.m_fragments[globalFragIdx++];
