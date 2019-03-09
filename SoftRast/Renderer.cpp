@@ -238,8 +238,6 @@ void RenderContext::EndFrame()
 		task->m_taskCounter = &frontEndCounter;
 
 		m_taskSystem.PushTask(task);
-
-		BinTrisEntry(m_binner, m_allocator, 0, 0, draw.m_indexBuffer.m_num / 3, draw);
 	}
 
 	m_taskSystem.WaitForCounter(&frontEndCounter);
