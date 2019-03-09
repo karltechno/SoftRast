@@ -301,6 +301,8 @@ static uint64_t ComputeBlockMask8x8
 		edges[0] = _mm256_add_epi32(edges[0], _edges.dx[0]);
 		edges[1] = _mm256_add_epi32(edges[1], _edges.dx[1]);
 		edges[2] = _mm256_add_epi32(edges[2], _edges.dx[2]);
+
+		zOverW = _mm256_add_ps(zOverW, _zOverW.dy);
 	}
 
 	return mask8x8;
