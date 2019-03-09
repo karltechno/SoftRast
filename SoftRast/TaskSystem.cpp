@@ -19,6 +19,11 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 
 	tls_threadIndex = 0;
 
+	if (!_numWorkers)
+	{
+		return;
+	}
+
 	KT_ASSERT(_numWorkers);
 
 	m_threads = (kt::Thread*)kt::Malloc(sizeof(kt::Thread) * _numWorkers);
