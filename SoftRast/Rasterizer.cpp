@@ -69,6 +69,41 @@ struct ZOverW8x8
 	__m256 dy;
 };
 
+static uint64_t ComputeBlockMask8x8_DepthOnly
+(
+	ZOverW8x8 const& _zOverW,
+	DepthTile* _depth,
+	int32_t _xTileRelative,
+	int32_t _yTileRelative
+)
+{
+	__m256i const xTileSimd = _mm256_set1_epi32(_xTileRelative);
+	__m256i const yTileSimd = _mm256_set1_epi32(_yTileRelative);
+
+	__m256 zOverW = _mm256_fmadd_ps(_mm256_cvtepi32_ps(yTileSimd), _zOverW.dy, _zOverW.tileTopLeft);
+	zOverW = _mm256_add_ps(zOverW, _mm256_mul_ps(_mm256_cvtepi32_ps(xTileSimd), _zOverW.dx));
+
+	uint64_t mask8x8 = 0;
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
+		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
+
+		__m256 depthCmpMask = _mm256_and_ps(_mm256_cmp_ps(zOverW, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, zOverW, _CMP_GT_OQ));
+
+		uint64_t const laneMask = _mm256_movemask_ps(depthCmpMask);
+
+		__m256 const newDepth = _mm256_blendv_ps(depthGather, zOverW, depthCmpMask);
+		_mm256_storeu_ps(depthPtr, newDepth);
+
+		mask8x8 |= (laneMask << (i * 8ull));
+
+		zOverW = _mm256_add_ps(zOverW, _zOverW.dy);
+	}
+	return mask8x8;
+}
+
 static uint64_t ComputeBlockMask8x8
 (
 	EdgeEquations8x8 const& _edges,
@@ -104,7 +139,7 @@ static uint64_t ComputeBlockMask8x8
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		__m256i edgeMask = _mm256_xor_si256(_mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]), signBit);
+		__m256i const edgeMask = _mm256_xor_si256(_mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]), signBit);
 
 		// test Z
 		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
@@ -201,31 +236,19 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 
 				uint64_t mask8x8 = 0;
 
-				//if (e0_allOut == 0xF && e1_allOut == 0xF && e2_allOut == 0xF)
-				//{
-				//	//// Todo: mark block instead of outputting 64 frags
-				//	mask8x8 = ~0ull;
-				//	//KT_ASSERT(o_buffer.m_numFragments < FragmentBuffer::c_maxFragments);
-				//	//FragmentBuffer::Frag& frag = o_buffer.m_fragments[o_buffer.m_numFragments++];
-
-				//	//frag.x = uint8_t(binScreenX0);
-				//	//frag.y = uint8_t(binScreenY0);
-				//	//frag.flags = FragmentBuffer::Flags::Full8x8Block;
-				//	//frag.triIdx = triIdx;
-				//	//frag.chunkIdx = _chunkIdx;
-				//	//continue;
-
-				//}
-				//else
-				//{
+				if (e0_allOut == 0xF && e1_allOut == 0xF && e2_allOut == 0xF)
+				{
+					mask8x8 = ComputeBlockMask8x8_DepthOnly(zOverWPlaneSimd, _depth, xBlock, yBlock);
+				}
+				else
+				{
 					mask8x8 = ComputeBlockMask8x8(blockEdgesSimd, zOverWPlaneSimd, _call, _depth, xBlock, yBlock);
-				//}
+				}
 				
-				// KT_ASSERT(mask8x8 != ~0ull && "Rasterization routine found full 8x8 block, but above code did not detect it!");
-
 				while (mask8x8)
 				{
 					// Todo: Maybe could do some fancy simd left packing?
+					// Todo: should maybe compress fragment stream?
 					uint64_t const bitIdx = kt::Cnttz(mask8x8);
 					uint8_t const bitY = uint8_t(bitIdx / 8) + binScreenY0;
 					uint8_t const bitX = uint8_t(bitIdx & 7) + binScreenX0;
