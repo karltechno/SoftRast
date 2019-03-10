@@ -37,16 +37,16 @@ struct FragmentBuffer
 
 	};
 
-	static_assert((1 << 7) <= Config::c_binHeight, "Cant fit height in 7 bits");
-	static_assert((1 << 7) <= Config::c_binWidth, "Cant fit width in 7 bits");
+	static_assert((1 << 7) >= Config::c_binHeight, "Cant fit height in 7 bits");
+	static_assert((1 << 7) >= Config::c_binWidth, "Cant fit width in 7 bits");
 
 	// Todo: chunk the buffer
 	static uint32_t constexpr c_maxFragments = 2048 * 16;
 
+	KT_ALIGNAS(32) float m_interpolants[Config::c_maxVaryings * c_maxFragments];
+
 	KT_ALIGNAS(32) Frag m_fragments[c_maxFragments];
 	uint32_t m_numFragments = 0;
-
-	float m_interpolants[Config::c_maxVaryings * c_maxFragments];
 
 	void Reset()
 	{
@@ -161,7 +161,6 @@ static void ShadePartialBlockAVX_8x8
 	for (uint32_t i = 0; i < 8; ++i)
 	{
 		__m256i edgeMask = _mm256_or_si256(_mm256_or_si256(e0, e1), e2);
-		edgeMask = _mm256_srai_epi32(edgeMask, 31); // or sign bits, arith shift right so sign bit = ~0 and no sign bit = 0
 		edgeMask = _mm256_xor_si256(edgeMask, _mm256_cmpeq_epi32(edgeMask, edgeMask)); // flip bits so negative (~0) is 0.
 		
 #if TEST_IT
@@ -278,11 +277,12 @@ static uint64_t ComputeBlockMask8x8
 	// Todo: look at other coverage mask generation approaches. Eg LUT based.
 
 	// Manually unroll ?
+
+	__m256i const signBit = _mm256_set1_epi32(0x80000000);
+
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		__m256i edgeMask = _mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]);
-		edgeMask = _mm256_srai_epi32(edgeMask, 31); // or sign bits, arith shift right so sign bit = ~0 and no sign bit = 0
-		edgeMask = _mm256_xor_si256(edgeMask, _mm256_cmpeq_epi32(edgeMask, edgeMask)); // flip bits so negative (~0) is 0.
+		__m256i edgeMask = _mm256_xor_si256(_mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]), signBit);
 
 		// test Z
 		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
@@ -296,7 +296,7 @@ static uint64_t ComputeBlockMask8x8
 		__m256 const newDepth = _mm256_blendv_ps(depthGather, zOverW, depthCmpMask);
 		_mm256_storeu_ps(depthPtr, newDepth);
 
-		mask8x8 |= (laneMask << (i * 8));
+		mask8x8 |= (laneMask << (i * 8ull));
 
 		edges[0] = _mm256_add_epi32(edges[0], _edges.dx[0]);
 		edges[1] = _mm256_add_epi32(edges[1], _edges.dx[1]);
@@ -408,6 +408,9 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					uint8_t const bitY = uint8_t(bitIdx / 8) + binScreenY0;
 					uint8_t const bitX = uint8_t(bitIdx & 7) + binScreenX0;
 
+					KT_ASSERT(bitY < Config::c_binHeight);
+					KT_ASSERT(bitX < Config::c_binWidth);
+
 					KT_ASSERT(o_buffer.m_numFragments < FragmentBuffer::c_maxFragments);
 					FragmentBuffer::Frag& frag = o_buffer.m_fragments[o_buffer.m_numFragments++];
 					frag.x = bitX;
@@ -497,7 +500,6 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 
 	{
 		uint32_t fragIdx = 0;
-
 		FragmentBuffer::Frag const* frag = &_buffer.m_fragments[fragIdx++];
 
 		float* outAttribs = _buffer.m_interpolants;
@@ -507,7 +509,8 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 			uint32_t packedTriChunkIdx = frag->packedChunkTriIdx;
 
 			BinChunk const& chunk = *_chunks[frag->chunkIdx];
-			uint32_t curDrawCallIdx = chunk.m_drawCallIdx;
+			uint32_t const curDrawCallIdx = chunk.m_drawCallIdx;
+			KT_ASSERT(curDrawCallIdx < _ctx.m_numDrawCalls);
 
 			BinChunk::PlaneEq const& recipW = chunk.m_recipW[frag->triIdx];
 			uint32_t const numAttribs = chunk.m_attribsPerTri;
@@ -539,22 +542,23 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 				}
 
 				outAttribs += numAttribs;
+				KT_ASSERT(outAttribs < _buffer.m_interpolants + KT_ARRAY_COUNT(_buffer.m_interpolants));
 
 				++fragsPerCall[curDrawCallIdx];
+				
+				if (fragIdx == _buffer.m_numFragments)
+				{
+					goto do_shade;
+				}
+
 				frag = &_buffer.m_fragments[fragIdx++];
 
-			} while (fragIdx < _buffer.m_numFragments
-					 && frag->packedChunkTriIdx == packedTriChunkIdx);
-
-			if (fragIdx >= _buffer.m_numFragments)
-			{
-				break;
-			}
+			} while (frag->packedChunkTriIdx == packedTriChunkIdx);
 		}
 	}
 
-
-	// Now shade
+do_shade:
+	   
 	float const* interpolants = _buffer.m_interpolants;
 	uint32_t globalFragIdx = 0;
 
@@ -586,6 +590,7 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 			}
 		}
 	}
+	KT_ASSERT(globalFragIdx == _buffer.m_numFragments);
 }
 
 void RasterAndShadeBin2(ThreadRasterCtx const& _ctx)

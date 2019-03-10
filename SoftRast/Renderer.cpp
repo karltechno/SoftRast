@@ -150,7 +150,7 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 
 RenderContext::RenderContext()
 {
-	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
+	m_taskSystem.InitFromMainThread(0);
 
 	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
 	// Todo: frame buffer size hardcoded!!

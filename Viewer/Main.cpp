@@ -72,12 +72,20 @@ void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_col
 	uint32_t const greenOffset = redOffset + 1;
 	uint32_t const blueOffset = greenOffset + 1;
 
+#define WHITE_OUT (1)
+
 	for (uint32_t i = 0; i < 8; ++i)
 	{
+#if WHITE_OUT
+		o_colour[i * 4 + 0] = 1.0f;
+		o_colour[i * 4 + 1] = 1.0f;
+		o_colour[i * 4 + 2] = 1.0f;
+#else
 		o_colour[i * 4 + 0] = _varyings[i * sizeof(sr::Obj::Vertex) + redOffset] * 0.5f + 0.5f;
 		o_colour[i * 4 + 1] = _varyings[i * sizeof(sr::Obj::Vertex) + greenOffset] * 0.5f + 0.5f;
 		o_colour[i * 4 + 2] = _varyings[i * sizeof(sr::Obj::Vertex) + blueOffset] * 0.5f + 0.5f;
-		o_colour[i * 4 + 3] = 0xFF;
+#endif
+		o_colour[i * 4 + 3] = 1.0f;
 	}
 }
 
@@ -114,8 +122,8 @@ int main(int argc, char** argv)
 	
 	sr::Obj::Model model;
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
