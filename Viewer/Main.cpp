@@ -65,9 +65,13 @@ void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::
 
 	__m256 const half = _mm256_set1_ps(0.5f);
 
-	__m256 const red = _mm256_fmadd_ps(_varyings[redOffset], half, half);
-	__m256 const green = _mm256_fmadd_ps(_varyings[greenOffset], half, half);
-	__m256 const blue = _mm256_fmadd_ps(_varyings[blueOffset], half, half);
+	__m256 const lensq = _mm256_fmadd_ps(_varyings[redOffset], _varyings[redOffset], _mm256_fmadd_ps(_varyings[blueOffset], _varyings[blueOffset], _mm256_mul_ps(_varyings[greenOffset], _varyings[greenOffset])));
+	__m256 const lenRecip = _mm256_div_ps(_mm256_set1_ps(1.0f), _mm256_sqrt_ps(lensq));
+
+
+	__m256 const red = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[redOffset]), half, half);
+	__m256 const green = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[greenOffset]), half, half);
+	__m256 const blue = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[blueOffset]), half, half);
 
 	KT_ALIGNAS(32) float red_store[8];
 	KT_ALIGNAS(32) float green_store[8];
@@ -126,8 +130,8 @@ int main(int argc, char** argv)
 	
 	sr::Obj::Model model;
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::FilePath const f = kt::FilePath::WorkingDirectory();

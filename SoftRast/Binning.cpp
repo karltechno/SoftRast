@@ -236,7 +236,9 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int32_t const dy = (_v1[1] - _v0[1]);
 	int32_t const dx = (_v0[0] - _v1[0]);
 
-	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
+	int64_t c64 = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
+
+	int32_t c = int32_t(c64 >> Config::c_subPixelBits);
 
 	// Left/horizontal fill rule
 	if (dy < 0 || (dy == 0 && dx > 0))
@@ -246,7 +248,7 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 
 	_e.dy[_idx] = (_v1[1] - _v0[1]);
 	_e.dx[_idx] = (_v0[0] - _v1[0]);
-	_e.c[_idx] = int32_t(c >> Config::c_subPixelBits);
+	_e.c[_idx] = c;
 }
 
 static void SetupPlane
