@@ -1,5 +1,5 @@
 #include "Renderer.h"
-#include "Rasterizer_new.h"
+#include "Rasterizer.h"
 #include "kt/Memory.h"
 #include "kt/Logging.h"
 
@@ -150,7 +150,7 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 
 RenderContext::RenderContext()
 {
-	m_taskSystem.InitFromMainThread(0);
+	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
 
 	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
 	// Todo: frame buffer size hardcoded!!
@@ -252,17 +252,6 @@ void RenderContext::EndFrame()
 			for (uint32_t threadIdx = 0; threadIdx < m_binner.m_numThreads; ++threadIdx)
 			{
 				ThreadBin& bin = m_binner.LookupThreadBin(threadIdx, binX, binY);
-#if 0
-				activeBins += bin.m_numChunks != 0;
-				for (uint32_t j = 0; j < bin.m_numChunks; ++j)
-				{
-					activeChunks++;
-
-					DrawCall const& call = m_drawCalls[bin.m_drawCallIndicies[j]];
-					uint32_t tileIdx = binY * m_binner.m_numBinsX + binX;
-					RasterTrisInBin(call, *bin.m_binChunks[j], &call.m_frameBuffer->m_depthTiles[tileIdx], &call.m_frameBuffer->m_colourTiles[tileIdx]);
-				}
-#else
 				anyTris |= bin.m_numChunks != 0;
 			}
 
@@ -291,7 +280,6 @@ void RenderContext::EndFrame()
 
 				t->t.m_taskCounter = &tileRasterCounter;
 				m_taskSystem.PushTask(&t->t);
-#endif
 			}
 
 		}

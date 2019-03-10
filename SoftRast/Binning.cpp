@@ -441,10 +441,6 @@ static void BinTransformedAndClippedTri
 
 			for (uint32_t i = 0; i < attribElementStride; ++i)
 			{
-				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dx = attribPlanes[i].dx;
-				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dy = attribPlanes[i].dy;
-				//chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].c0 = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
-
 				chunk.m_attribsDx[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx;
 				chunk.m_attribsDy[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dy;
 				chunk.m_attribsC[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];

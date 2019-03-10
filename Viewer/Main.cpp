@@ -1,37 +1,14 @@
-#include "Platform/Window_Win32.h"
-#include "Rasterizer.h"
 #include <kt/Timer.h>
 #include <kt/Logging.h>
 #include <kt/Vec3.h>
 #include <kt/Mat4.h>
-#include <vector>
 
 #include "Camera.h"
 #include "Obj.h"
-
 #include "Input.h"
-#include "kt/FilePath.h"
 #include "Renderer.h"
-#include "kt/StackTrace.h"
-
-
-template <typename T>
-static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::FrameBuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
-{
-	for (uint32_t i = 0; i < _numIdx; i += 3)
-	{
-		T const i0 = _indexBuffer[i];
-		T const i1 = _indexBuffer[i + 1];
-		T const i2 = _indexBuffer[i + 2];
-
-		sr::Raster::SetupAndRasterTriTest(_fb, _db, _mtx, _vtxBuffer[i0].pos, _vtxBuffer[i1].pos, _vtxBuffer[i2].pos);
-	}
-}
-
-struct UniformTest
-{
-	sr::Tex::TextureData const* diffuse;
-};
+#include "Platform/Window_Win32.h"
+#include "Rasterizer.h"
 
 void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
@@ -65,9 +42,6 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 
 void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
-
-	// todo should pass in float ptr?
-
 	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float);
 	uint32_t const greenOffset = redOffset + 1;
 	uint32_t const blueOffset = greenOffset + 1;
@@ -97,21 +71,11 @@ void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_col
 
 int main(int argc, char** argv)
 {
-
-
 	sr::input::Init();
 	sr::Window_Win32 window("SoftRast", 1280, 720);
 
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
 	kt::Duration totalTime = kt::Duration::Zero();
-
-	sr::Raster::FrameBuffer fb;
-	fb.height = window.Height();
-	fb.width = window.Width();
-	fb.ptr = window.BackBufferData();
-
-	sr::Raster::DepthBuffer depthBuff;
-	depthBuff.Init(kt::GetDefaultAllocator(), 1280, 720);
 
 	sr::FreeCamController controller;
 	
@@ -145,14 +109,6 @@ int main(int argc, char** argv)
 		window.PumpMessageLoop();
 		sr::input::Tick((float)frameTime.Seconds());
 		controller.UpdateViewGamepad((float)frameTime.Seconds());
-#if 0
-		uint8_t const c =  (uint8_t)(255 * fmod(totalTime.Seconds(), 1.0));
-#else
-		uint8_t const c = 0;
-#endif
-		uint8_t const col[3] = { c, c, c };
-		sr::Raster::FillScreenTest(fb, col);
-		sr::Raster::ClearDepthBufferTest(depthBuff);
 
 		renderCtx.BeginFrame();
 		renderCtx.ClearFrameBuffer(framebuffer, 0);
@@ -188,12 +144,7 @@ int main(int argc, char** argv)
 			}
 
 
-
-			//sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
-
 			renderCtx.DrawIndexed(call);
-
-
 		}
 
 		renderCtx.EndFrame();
