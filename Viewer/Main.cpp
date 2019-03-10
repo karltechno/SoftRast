@@ -78,10 +78,18 @@ void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
+#define WHITE_OUT 0
+#if WHITE_OUT
+		o_colour[i * 4 + 0] = 1.0f;
+		o_colour[i * 4 + 1] = 1.0f;
+		o_colour[i * 4 + 2] = 1.0f;
+#else
 		o_colour[i * 4 + 0] = red_store[i];
 		o_colour[i * 4 + 1] = green_store[i];
 		o_colour[i * 4 + 2] = blue_store[i];
-		o_colour[i * 4 + 3] = 0xFF;
+#endif
+
+		o_colour[i * 4 + 3] = 1.0f;
 	}
 }
 
