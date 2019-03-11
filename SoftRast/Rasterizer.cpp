@@ -40,18 +40,22 @@ struct FragmentBuffer
 	static_assert((1 << 7) >= Config::c_binHeight, "Cant fit height in 7 bits");
 	static_assert((1 << 7) >= Config::c_binWidth, "Cant fit width in 7 bits");
 
-	// Todo: chunk the buffer
-	static uint32_t constexpr c_maxFragments = 2048 * 16;
+	ThreadScratchAllocator* m_allocator = nullptr;
 
-	KT_ALIGNAS(32) float m_interpolants[Config::c_maxVaryings * c_maxFragments];
-
-	KT_ALIGNAS(32) Frag m_fragments[c_maxFragments];
-	uint32_t m_numFragments = 0;
-
-	void Reset()
+	void ReserveFragments(uint32_t _count)
 	{
-		m_numFragments = 0;
+		KT_ASSERT(m_fragments);
+		KT_ASSERT(!m_interpolants);
+		void* p = m_allocator->Alloc(sizeof(Frag) * _count, 1);
+		KT_ASSERT(p);
+		KT_UNUSED(p);
 	}
+
+	Frag* m_fragments = nullptr;
+	float* m_interpolants = nullptr;
+
+	uint32_t m_numFragments = 0;
+	uint32_t m_interpolantsAllocSize = 0;
 };
 
 // Todo: naming is really confusing as edge eq dx*y and dy*x are used but the opposite for planes. Should maybe clarify naming.
@@ -245,8 +249,15 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					mask8x8 = ComputeBlockMask8x8(blockEdgesSimd, zOverWPlaneSimd, _call, _depth, xBlock, yBlock);
 				}
 				
-				while (mask8x8)
+				if (mask8x8)
 				{
+					uint32_t const numFragsToOutput = kt::Popcnt(mask8x8);
+					o_buffer.ReserveFragments(numFragsToOutput);
+					o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride;
+				}
+
+				while (mask8x8)
+				{		
 					// Todo: Maybe could do some fancy simd left packing?
 					// Todo: should maybe compress fragment stream?
 					uint64_t const bitIdx = kt::Cnttz(mask8x8);
@@ -256,7 +267,6 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					KT_ASSERT(bitY < Config::c_binHeight);
 					KT_ASSERT(bitX < Config::c_binWidth);
 
-					KT_ASSERT(o_buffer.m_numFragments < FragmentBuffer::c_maxFragments);
 					FragmentBuffer::Frag& frag = o_buffer.m_fragments[o_buffer.m_numFragments++];
 					frag.x = bitX;
 					frag.y = bitY;
@@ -326,7 +336,6 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 				}
 
 				outAttribs += numAttribs;
-				KT_ASSERT(outAttribs < _buffer.m_interpolants + KT_ARRAY_COUNT(_buffer.m_interpolants));
 
 				++fragsPerCall[curDrawCallIdx];
 				
@@ -417,15 +426,23 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 
 	uint32_t const tileIdx = _ctx.m_tileY * _ctx.m_binner->m_numBinsX + _ctx.m_tileX;
 
-	FragmentBuffer* buffer = kt::New<FragmentBuffer>(&threadAllocator);
 
 	for (uint32_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx)
 	{
-		buffer->Reset();
+		ThreadScratchAllocator::AllocScope const allocScope2(threadAllocator);
+		FragmentBuffer buffer;
+		buffer.m_allocator = &threadAllocator;
+		buffer.m_fragments = (FragmentBuffer::Frag*)threadAllocator.Align(KT_ALIGNOF(FragmentBuffer::Frag));
+		KT_ASSERT(buffer.m_fragments);
+
 		BinChunk& curChunk = *sortedChunks[chunkIdx];
 		DrawCall const& call = _ctx.m_drawCalls[curChunk.m_drawCallIdx];
-		RasterizeTrisInBin_OutputFragments(call, &call.m_frameBuffer->m_depthTiles[tileIdx], curChunk, chunkIdx, *buffer);
-		ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, *buffer); // Todo: shouldn't reset every chunk
+		RasterizeTrisInBin_OutputFragments(call, &call.m_frameBuffer->m_depthTiles[tileIdx], curChunk, chunkIdx, buffer);
+
+		buffer.m_interpolants = (float*)threadAllocator.Alloc(buffer.m_interpolantsAllocSize, 32);
+		KT_ASSERT(buffer.m_interpolants);
+
+		ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, buffer); // Todo: shouldn't reset every chunk
 	}
 
 }
