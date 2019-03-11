@@ -175,7 +175,7 @@ uint32_t TaskSystem::TotalThreadsIncludingMainThread()
 ThreadScratchAllocator& TaskSystem::ThreadAllocator() const
 {
 	uint32_t const idx = tls_threadIndex;
-	KT_ASSERT(idx < m_numWorkers + 1);
+	KT_ASSERT(idx < TotalThreadsIncludingMainThread());
 	return m_allocators[idx];
 }
 
