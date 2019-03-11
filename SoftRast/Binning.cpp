@@ -239,14 +239,9 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
 
 	// Left/horizontal fill rule
-	static bool doAthing = true;
-
-	if (doAthing)
+	if (dy < 0 || (dy == 0 && dx > 0))
 	{
-		if (dy < 0 || (dy == 0 && dx > 0))
-		{
-			c += Config::c_subPixelStep;
-		}
+		c += Config::c_subPixelStep;
 	}
 
 
