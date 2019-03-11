@@ -10,10 +10,11 @@ struct DepthTile;
 struct ColourTile;
 struct DrawCall;
 struct BinContext;
+class RenderContext;
 
 struct ThreadRasterCtx
 {
-	ThreadScratchAllocator* m_allocator = nullptr;
+	RenderContext* m_ctx = nullptr;
 
 	DrawCall* m_drawCalls = nullptr;
 

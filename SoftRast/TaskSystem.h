@@ -8,7 +8,7 @@
 namespace sr
 {
 
-using ThreadScratchAllocator = kt::LinearAllocator<kt::LinearAllocatorThreadSafety::ThreadSafeAlloc>;
+using ThreadScratchAllocator = kt::LinearAllocator;
 
 struct Task;
 
@@ -78,8 +78,13 @@ public:
 
 	uint32_t TotalThreadsIncludingMainThread();
 
+	ThreadScratchAllocator& ThreadAllocator() const;
+	void ResetAllocators();
+
 private:
 	void WorkerLoop(uint32_t _threadId);
+
+	ThreadScratchAllocator* m_allocators = nullptr;
 
 	kt::Thread* m_threads = nullptr;
 	uint32_t m_numWorkers = 0;

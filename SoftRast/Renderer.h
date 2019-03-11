@@ -110,13 +110,14 @@ public:
 
 	void ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color = 0x00000000, bool _clearColour = true, bool _clearDepth = true);
 
+	ThreadScratchAllocator& ThreadAllocator();
+
 	void BeginFrame();
 	void EndFrame();
 
 private:
 	TaskSystem m_taskSystem;
 
-	ThreadScratchAllocator m_allocator;
 	BinContext m_binner;
 	kt::Array<DrawCall> m_drawCalls;
 };

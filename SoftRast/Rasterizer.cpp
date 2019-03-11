@@ -279,7 +279,7 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 		return;
 	}
 
-	uint32_t* fragsPerCall = (uint32_t*)_ctx.m_allocator->Alloc(sizeof(uint32_t) * _ctx.m_numDrawCalls);
+	uint32_t* fragsPerCall = (uint32_t*)KT_ALLOCA(sizeof(uint32_t) * _ctx.m_numDrawCalls);
 	memset(fragsPerCall, 0, sizeof(uint32_t) * _ctx.m_numDrawCalls);
 
 	{
@@ -379,6 +379,9 @@ do_shade:
 
 void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 {
+	ThreadScratchAllocator& threadAllocator = _ctx.m_ctx->ThreadAllocator();
+	ThreadScratchAllocator::AllocScope const allocScope(threadAllocator);
+
 	// sort draw calls
 	uint32_t numChunks = 0;
 
@@ -414,7 +417,7 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 
 	uint32_t const tileIdx = _ctx.m_tileY * _ctx.m_binner->m_numBinsX + _ctx.m_tileX;
 
-	FragmentBuffer* buffer = kt::New<FragmentBuffer>(_ctx.m_allocator);
+	FragmentBuffer* buffer = kt::New<FragmentBuffer>(&threadAllocator);
 
 	for (uint32_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx)
 	{

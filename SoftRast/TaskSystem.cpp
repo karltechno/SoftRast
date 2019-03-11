@@ -1,3 +1,6 @@
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+
 #include "TaskSystem.h"
 #include "kt/Strings.h"
 
@@ -23,18 +26,24 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 	{
 		return;
 	}
+	m_numWorkers = _numWorkers;
 
-	KT_ASSERT(_numWorkers);
+	m_threads = new kt::Thread[_numWorkers];
 
-	m_threads = (kt::Thread*)kt::Malloc(sizeof(kt::Thread) * _numWorkers);
-	
-	// Todo: we should make a kt ... new[]
+	// including main thread
+	m_allocators = new ThreadScratchAllocator[TotalThreadsIncludingMainThread()];
 
-	for (uint32_t i = 0; i < _numWorkers; ++i)
+	for (uint32_t i = 0; i < TotalThreadsIncludingMainThread(); ++i)
 	{
-		kt::PlacementNew(m_threads + i);
-	}
+		static const size_t MEM_SIZE = 128 * 1024 * 1024;
 
+		ThreadScratchAllocator& alloc = m_allocators[i];
+		// Todo: virtual mem kt wrapper
+		void* ptr = ::VirtualAlloc(nullptr, MEM_SIZE, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+		KT_ASSERT(ptr);
+		alloc.Init(ptr, MEM_SIZE);
+	}
+	
 	std::atomic<uint32_t> initCounter{ _numWorkers };
 	m_numWorkers = _numWorkers;
 
@@ -54,7 +63,7 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		kt::Thread& t = m_threads[i];
 		ThreadInitData& data = initData[i];
 		threadNames[i].Clear();
-		threadNames[i].AppendFmt("SoftRast Worker %u", i);
+		threadNames[i].AppendFmt("SoftRast Worker %u", i + 1);
 
 		// main thread has 0
 		data.threadId = i + 1;
@@ -89,11 +98,16 @@ void TaskSystem::WaitAndShutdown()
 		m_threads[i].Join();
 	}
 
-	kt::Free(m_threads);
+	ResetAllocators();
+
+	delete[] m_threads;
+	delete[] m_allocators;
+
 	kt::Free(m_packets);
 
 	m_threads = nullptr;
 	m_packets = nullptr;
+	m_allocators = nullptr;
 }
 
 void TaskSystem::PushTask(Task* _task)
@@ -184,6 +198,21 @@ void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 uint32_t TaskSystem::TotalThreadsIncludingMainThread()
 {
 	return m_numWorkers + 1;
+}
+
+ThreadScratchAllocator& TaskSystem::ThreadAllocator() const
+{
+	uint32_t const idx = tls_threadIndex;
+	KT_ASSERT(idx < m_numWorkers + 1);
+	return m_allocators[idx];
+}
+
+void TaskSystem::ResetAllocators()
+{
+	for (uint32_t i = 0; i < TotalThreadsIncludingMainThread(); ++i)
+	{
+		m_allocators[i].Reset();
+	}
 }
 
 void TaskSystem::WorkerLoop(uint32_t _threadId)

@@ -152,7 +152,6 @@ RenderContext::RenderContext()
 {
 	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
 
-	m_allocator.Init(kt::GetDefaultAllocator(), 1024 * 1024 * 512);
 	// Todo: frame buffer size hardcoded!!
 	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
 
@@ -161,7 +160,6 @@ RenderContext::RenderContext()
 RenderContext::~RenderContext()
 {
 	m_taskSystem.WaitAndShutdown();
-	m_allocator.Reset();
 }
 
 void RenderContext::DrawIndexed(DrawCall const& _call)
@@ -193,10 +191,15 @@ void RenderContext::ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color, bool
 	}
 }
 
+ThreadScratchAllocator& RenderContext::ThreadAllocator()
+{
+	return m_taskSystem.ThreadAllocator();
+}
+
 void RenderContext::BeginFrame()
 {
 	m_drawCalls.Clear();
-	m_allocator.Reset();
+	m_taskSystem.ResetAllocators();
 }
 
 void RenderContext::EndFrame()
@@ -225,7 +228,7 @@ void RenderContext::EndFrame()
 		auto drawCallTaskFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
 		{
 			BinTrisTaskData* data = (BinTrisTaskData*)_task->m_userData;
-			BinTrisEntry(data->ctx->m_binner, data->ctx->m_allocator, _threadIdx, _start, _end, *data->call);
+			BinTrisEntry(data->ctx->m_binner, data->ctx->ThreadAllocator(), _threadIdx, _start, _end, *data->call);
 		};
 
 		BinTrisTaskData* taskData = drawCallTasksData + i;
@@ -273,9 +276,9 @@ void RenderContext::EndFrame()
 				t->rasterCtx.m_binner = &m_binner;
 				t->rasterCtx.m_tileX = binX;
 				t->rasterCtx.m_tileY = binY;
-				t->rasterCtx.m_allocator = &m_allocator;
 				t->rasterCtx.m_drawCalls = m_drawCalls.Data();
 				t->rasterCtx.m_numDrawCalls = m_drawCalls.Size();
+				t->rasterCtx.m_ctx = this;
 				kt::PlacementNew(&t->t, tileRasterFn, 1, 1, t);
 
 				t->t.m_taskCounter = &tileRasterCounter;
