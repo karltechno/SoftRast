@@ -249,15 +249,17 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					mask8x8 = ComputeBlockMask8x8(blockEdgesSimd, zOverWPlaneSimd, _call, _depth, xBlock, yBlock);
 				}
 				
-				if (mask8x8)
+				if (!mask8x8)
 				{
-					uint32_t const numFragsToOutput = kt::Popcnt(mask8x8);
-					o_buffer.ReserveFragments(numFragsToOutput);
-					o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride;
+					continue;
 				}
 
-				while (mask8x8)
-				{		
+				uint32_t const numFragsToOutput = kt::Popcnt(mask8x8);
+				o_buffer.ReserveFragments(numFragsToOutput);
+				o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride;
+
+				do 
+				{
 					// Todo: Maybe could do some fancy simd left packing?
 					// Todo: should maybe compress fragment stream?
 					uint64_t const bitIdx = kt::Cnttz(mask8x8);
@@ -275,7 +277,7 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					frag.chunkIdx = _chunkIdx;
 
 					mask8x8 ^= (1ull << bitIdx);
-				}
+				} while (mask8x8);			
 			}
 		}
 	}
@@ -434,7 +436,6 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 		buffer.m_allocator = &threadAllocator;
 		buffer.m_fragments = (FragmentBuffer::Frag*)threadAllocator.Align(KT_ALIGNOF(FragmentBuffer::Frag));
 		KT_ASSERT(buffer.m_fragments);
-
 		BinChunk& curChunk = *sortedChunks[chunkIdx];
 		DrawCall const& call = _ctx.m_drawCalls[curChunk.m_drawCallIdx];
 		RasterizeTrisInBin_OutputFragments(call, &call.m_frameBuffer->m_depthTiles[tileIdx], curChunk, chunkIdx, buffer);
