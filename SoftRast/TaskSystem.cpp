@@ -163,35 +163,7 @@ void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 {
 	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
 	{
-		TaskPacket packet;
-
-		// Todo: duplicate code
-		bool popped = false;
-		{
-			kt::ScopedLock<kt::Mutex> lk(m_queueMutex);
-
-			if (m_numEntriesInQueue)
-			{
-				packet = m_packets[m_queueTail];
-				m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-				std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
-				popped = true;
-			}
-		}
-
-		if (popped)
-		{
-			packet.m_task->m_fn(packet.m_task, tls_threadIndex, packet.m_begin, packet.m_end);
-			if (packet.m_task->m_taskCounter)
-			{
-				std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
-			}
-
-			if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
-			{
-				// do anything?
-			}
-		}
+		TryRunOnePacket_NoLock();
 	}
 }
 
@@ -223,45 +195,44 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 
 		std::atomic_fetch_add_explicit(&m_numActiveWorkers, 1, std::memory_order_acquire);
 
-		for (;;)
-		{
-			TaskPacket packet;
-			bool popped = false;
-			{
-				kt::ScopedLock<kt::Mutex> mt(m_queueMutex);
+		while(TryRunOnePacket_NoLock()) {}
 
-				if (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_relaxed))
-				{
-					packet = m_packets[m_queueTail];
-					m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-					std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
-					popped = true;
-				}
-			}
-
-			if (popped)
-			{
-				packet.m_task->m_fn(packet.m_task, _threadId, packet.m_begin, packet.m_end);
-				if (packet.m_task->m_taskCounter)
-				{
-					std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
-				}
-
-				if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
-				{
-					// do anything?
-				}
-			}
-			else
-			{
-				break;
-			}
-		}
 		std::atomic_fetch_sub_explicit(&m_numActiveWorkers, 1, std::memory_order_release);
 	}
 }
 
 
+bool TaskSystem::TryRunOnePacket_NoLock()
+{
+	TaskPacket packet;
+	bool popped = false;
+	{
+		kt::ScopedLock<kt::Mutex> mt(m_queueMutex);
 
+		if (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_relaxed))
+		{
+			packet = m_packets[m_queueTail];
+			m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
+			std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
+			popped = true;
+		}
+	}
+
+	if (popped)
+	{
+		packet.m_task->m_fn(packet.m_task, tls_threadIndex, packet.m_begin, packet.m_end);
+		if (packet.m_task->m_taskCounter)
+		{
+			std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
+		}
+
+		if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
+		{
+			// do anything?
+		}
+	}
+
+	return popped;
+}
 
 }

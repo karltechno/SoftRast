@@ -84,6 +84,8 @@ public:
 private:
 	void WorkerLoop(uint32_t _threadId);
 
+	bool TryRunOnePacket_NoLock();
+
 	ThreadScratchAllocator* m_allocators = nullptr;
 
 	kt::Thread* m_threads = nullptr;
