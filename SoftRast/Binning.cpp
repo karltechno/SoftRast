@@ -215,7 +215,7 @@ KT_FORCEINLINE static void FetchAttribPointers(DrawCall const& _call, uint32_t c
 static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinContext& _ctx, ThreadBin& _bin, DrawCall const& _call)
 {
 	if (_bin.m_numChunks
-		&& _bin.m_drawCallIndicies[_bin.m_numChunks - 1] == _call.m_drawCallIdx
+		&& _bin.m_binChunks[_bin.m_numChunks - 1]->m_drawCallIdx == _call.m_drawCallIdx
 		&& _bin.m_binChunks[_bin.m_numChunks - 1]->m_numTris < c_trisPerBinChunk)
 	{
 		return *_bin.m_binChunks[_bin.m_numChunks - 1];
@@ -225,8 +225,8 @@ static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinCo
 	BinChunk* newChunk = (BinChunk*)_alloc.Alloc(sizeof(BinChunk), KT_ALIGNOF(BinChunk));
 	uint32_t const chunkIdx = _bin.m_numChunks++;
 	newChunk->m_numTris = 0;
-	newChunk->m_attribStride = _call.m_attributeBuffer.m_stride / sizeof(float);
-	_bin.m_drawCallIndicies[chunkIdx] = _call.m_drawCallIdx;
+	newChunk->m_attribsPerTri = _call.m_attributeBuffer.m_stride / sizeof(float);
+	newChunk->m_drawCallIdx = _call.m_drawCallIdx;
 	_bin.m_binChunks[chunkIdx] = newChunk;
 	return *newChunk;
 }
@@ -236,19 +236,23 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int32_t const dy = (_v1[1] - _v0[1]);
 	int32_t const dx = (_v0[0] - _v1[0]);
 
-	int64_t c64 = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
-
-	int32_t c = int32_t(c64 >> Config::c_subPixelBits);
+	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
 
 	// Left/horizontal fill rule
-	if (dy < 0 || (dy == 0 && dx > 0))
+	static bool doAthing = true;
+
+	if (doAthing)
 	{
-		c += 1;
+		if (dy < 0 || (dy == 0 && dx > 0))
+		{
+			c += Config::c_subPixelStep;
+		}
 	}
+
 
 	_e.dy[_idx] = (_v1[1] - _v0[1]);
 	_e.dx[_idx] = (_v0[0] - _v1[0]);
-	_e.c[_idx] = c;
+	_e.c[_idx] = uint32_t(c >> Config::c_subPixelBits);
 }
 
 static void SetupPlane
@@ -433,13 +437,14 @@ static void BinTransformedAndClippedTri
 			chunk.m_zOverW[chunkTriIdx] = zOverW_plane;
 			chunk.m_zOverW[chunkTriIdx].c0 = zOverW_plane.dx * screenV0dx + zOverW_plane.dy * screenV0dy + _v0.z * invW[0];
 
-			uint32_t const attribElementStride = chunk.m_attribStride;
+			uint32_t const attribElementStride = chunk.m_attribsPerTri;
 
 			for (uint32_t i = 0; i < attribElementStride; ++i)
 			{
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dx = attribPlanes[i].dx;
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].dy = attribPlanes[i].dy;
-				chunk.m_attribPlanes[chunkTriIdx * attribElementStride + i].c0 = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
+				chunk.m_attribsDx[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx;
+				chunk.m_attribsDy[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dy;
+				chunk.m_attribsC[chunkTriIdx * attribElementStride + i] = attribPlanes[i].dx * screenV0dx + attribPlanes[i].dy * screenV0dy + _attribPtrs[0][i] * invW[0];
+
 			}
 		}
 	}

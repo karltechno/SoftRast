@@ -1,38 +1,16 @@
-#include "Platform/Window_Win32.h"
-#include "Rasterizer.h"
 #include <kt/Timer.h>
 #include <kt/Logging.h>
 #include <kt/Vec3.h>
 #include <kt/Mat4.h>
-#include <vector>
 
 #include "Camera.h"
 #include "Obj.h"
-
 #include "Input.h"
-#include "kt/FilePath.h"
 #include "Renderer.h"
+#include "Platform/Window_Win32.h"
+#include "Rasterizer.h"
 
-
-template <typename T>
-static void DrawT(T const* _indexBuffer, uint32_t const _numIdx, sr::Obj::Vertex const* _vtxBuffer, sr::Raster::FrameBuffer& _fb, sr::Raster::DepthBuffer& _db, kt::Mat4 const& _mtx)
-{
-	for (uint32_t i = 0; i < _numIdx; i += 3)
-	{
-		T const i0 = _indexBuffer[i];
-		T const i1 = _indexBuffer[i + 1];
-		T const i2 = _indexBuffer[i + 2];
-
-		sr::Raster::SetupAndRasterTriTest(_fb, _db, _mtx, _vtxBuffer[i0].pos, _vtxBuffer[i1].pos, _vtxBuffer[i2].pos);
-	}
-}
-
-struct UniformTest
-{
-	sr::Tex::TextureData const* diffuse;
-};
-
-void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 	
@@ -45,8 +23,16 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 	// todo should pass in float ptr?
 	KT_ALIGNAS(32) float u[8];
 	KT_ALIGNAS(32) float v[8];
-	_mm256_store_ps(u, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float)]);
-	_mm256_store_ps(v, _varyings[offsetof(sr::Obj::Vertex, uv) / sizeof(float) + 1]);
+
+	uint32_t const uOffs = offsetof(sr::Obj::Vertex, uv) / sizeof(float);
+	uint32_t const vOffs = 1 + offsetof(sr::Obj::Vertex, uv) / sizeof(float);
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		u[i] = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + uOffs];
+		v[i] = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + vOffs];
+	}
+
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
@@ -54,45 +40,31 @@ void DiffuseTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_max
 	}
 }
 
-void NormalShaderTest(void const* _uniforms, __m256 const _varyings[sr::Config::c_maxVaryings], float o_colour[4 * 8], __m256 const& _execMask)
+void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
-
-	// todo should pass in float ptr?
-
 	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float);
 	uint32_t const greenOffset = redOffset + 1;
 	uint32_t const blueOffset = greenOffset + 1;
 
-	__m256 const half = _mm256_set1_ps(0.5f);
-
-	__m256 const lensq = _mm256_fmadd_ps(_varyings[redOffset], _varyings[redOffset], _mm256_fmadd_ps(_varyings[blueOffset], _varyings[blueOffset], _mm256_mul_ps(_varyings[greenOffset], _varyings[greenOffset])));
-	__m256 const lenRecip = _mm256_div_ps(_mm256_set1_ps(1.0f), _mm256_sqrt_ps(lensq));
-
-
-	__m256 const red = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[redOffset]), half, half);
-	__m256 const green = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[greenOffset]), half, half);
-	__m256 const blue = _mm256_fmadd_ps(_mm256_mul_ps(lenRecip, _varyings[blueOffset]), half, half);
-
-	KT_ALIGNAS(32) float red_store[8];
-	KT_ALIGNAS(32) float green_store[8];
-	KT_ALIGNAS(32) float blue_store[8];
-	_mm256_store_ps(red_store, red);
-	_mm256_store_ps(green_store, green);
-	_mm256_store_ps(blue_store, blue);
+#define WHITE_OUT (0)
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-#define WHITE_OUT 0
 #if WHITE_OUT
 		o_colour[i * 4 + 0] = 1.0f;
 		o_colour[i * 4 + 1] = 1.0f;
 		o_colour[i * 4 + 2] = 1.0f;
 #else
-		o_colour[i * 4 + 0] = red_store[i];
-		o_colour[i * 4 + 1] = green_store[i];
-		o_colour[i * 4 + 2] = blue_store[i];
-#endif
+		float const r = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + redOffset];
+		float const g = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + greenOffset];
+		float const b = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + blueOffset];
 
+		float const mul = 1.0f / sqrtf(r * r + g * g + b * b);
+
+		o_colour[i * 4 + 0] = r * mul * 0.5f + 0.5f;
+		o_colour[i * 4 + 1] = g * mul * 0.5f + 0.5f;
+		o_colour[i * 4 + 2] = b * mul * 0.5f + 0.5f;
+#endif
 		o_colour[i * 4 + 3] = 1.0f;
 	}
 }
@@ -104,16 +76,6 @@ int main(int argc, char** argv)
 
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
 	kt::Duration totalTime = kt::Duration::Zero();
-
-	sr::Raster::FrameBuffer fb;
-	fb.height = window.Height();
-	fb.width = window.Width();
-	fb.ptr = window.BackBufferData();
-
-	sr::Raster::DepthBuffer depthBuff;
-	depthBuff.Init(kt::GetDefaultAllocator(), 1280, 720);
-
-	kt::Mat4 perspMtx = kt::Mat4::PerspectiveLH_ZO(kt::ToRadians(85.0f), 1280.0f / 720.0f, 0.01f, 1000.0f);
 
 	sr::FreeCamController controller;
 	
@@ -130,11 +92,10 @@ int main(int argc, char** argv)
 	
 	sr::Obj::Model model;
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-
-	kt::FilePath const f = kt::FilePath::WorkingDirectory();
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
 
@@ -148,14 +109,6 @@ int main(int argc, char** argv)
 		window.PumpMessageLoop();
 		sr::input::Tick((float)frameTime.Seconds());
 		controller.UpdateViewGamepad((float)frameTime.Seconds());
-#if 0
-		uint8_t const c =  (uint8_t)(255 * fmod(totalTime.Seconds(), 1.0));
-#else
-		uint8_t const c = 0;
-#endif
-		uint8_t const col[3] = { c, c, c };
-		sr::Raster::FillScreenTest(fb, col);
-		sr::Raster::ClearDepthBufferTest(depthBuff);
 
 		renderCtx.BeginFrame();
 		renderCtx.ClearFrameBuffer(framebuffer, 0);
@@ -191,12 +144,7 @@ int main(int argc, char** argv)
 			}
 
 
-
-			//sr::Raster::DrawSerial_Test(fb, depthBuff, controller.GetCam().GetCachedViewProj(), call);
-
 			renderCtx.DrawIndexed(call);
-
-
 		}
 
 		renderCtx.EndFrame();
