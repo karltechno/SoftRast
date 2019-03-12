@@ -236,7 +236,7 @@ static void SetupEdge(BinChunk::EdgeEq& _e, uint32_t const _idx, int32_t const (
 	int32_t const dy = (_v1[1] - _v0[1]);
 	int32_t const dx = (_v0[0] - _v1[0]);
 
-	int64_t c = _v0[1] * (_v1[0] - _v0[0]) - _v0[0] * (_v1[1] - _v0[1]);
+	int64_t c = int64_t(_v0[1]) * int64_t(_v1[0] - _v0[0]) - int64_t(_v0[0]) * int64_t(_v1[1] - _v0[1]);
 
 	// Left/horizontal fill rule
 	if (dy < 0 || (dy == 0 && dx > 0))
@@ -294,7 +294,7 @@ static void BinTransformedAndClippedTri
 	int32_t const v1_fp[2] = { int32_t(v1raster.x * Config::c_subPixelStep + 0.5f), int32_t(v1raster.y * Config::c_subPixelStep + 0.5f) };
 	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
 
-	int64_t triArea2_fp = (v2_fp[0] - v0_fp[0]) * (v1_fp[1] - v0_fp[1]) - (v2_fp[1] - v0_fp[1]) * (v1_fp[0] - v0_fp[0]);
+	int64_t triArea2_fp = int64_t(v2_fp[0] - v0_fp[0]) * int64_t(v1_fp[1] - v0_fp[1]) - int64_t(v2_fp[1] - v0_fp[1]) * int64_t(v1_fp[0] - v0_fp[0]);
 
 	// Todo: allow switching winding order
 	if (triArea2_fp <= 0)
