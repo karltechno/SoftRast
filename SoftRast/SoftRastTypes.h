@@ -26,7 +26,7 @@ constexpr uint32_t c_binWidthLog2 = 7;
 constexpr uint32_t c_binHeight = 1 << c_binHeightLog2;
 constexpr uint32_t c_binWidth = 1 << c_binWidthLog2;
 
-constexpr int32_t c_subPixelBits = 4;
+constexpr int32_t c_subPixelBits = 8;
 constexpr int32_t c_subPixelStep = 1 << c_subPixelBits;
 constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
 
