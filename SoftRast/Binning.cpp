@@ -295,7 +295,7 @@ static void BinTransformedAndClippedTri
 	int32_t const v2_fp[2] = { int32_t(v2raster.x * Config::c_subPixelStep + 0.5f), int32_t(v2raster.y * Config::c_subPixelStep + 0.5f) };
 
 	int64_t triArea2_fp = int64_t(v2_fp[0] - v0_fp[0]) * int64_t(v1_fp[1] - v0_fp[1]) - int64_t(v2_fp[1] - v0_fp[1]) * int64_t(v1_fp[0] - v0_fp[0]);
-
+	triArea2_fp >>= Config::c_subPixelBits;
 	// Todo: allow switching winding order
 	if (triArea2_fp <= 0)
 	{
