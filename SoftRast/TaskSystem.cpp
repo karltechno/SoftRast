@@ -167,7 +167,7 @@ void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 	}
 }
 
-uint32_t TaskSystem::TotalThreadsIncludingMainThread()
+uint32_t TaskSystem::TotalThreadsIncludingMainThread() const
 {
 	return m_numWorkers + 1;
 }

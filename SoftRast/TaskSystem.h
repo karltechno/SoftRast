@@ -76,7 +76,7 @@ public:
 
 	void WaitForCounter(std::atomic<uint32_t>* _counter);
 
-	uint32_t TotalThreadsIncludingMainThread();
+	uint32_t TotalThreadsIncludingMainThread() const;
 
 	ThreadScratchAllocator& ThreadAllocator() const;
 	void ResetAllocators();
