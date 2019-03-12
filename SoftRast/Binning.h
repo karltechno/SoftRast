@@ -40,8 +40,6 @@ struct BinChunk
 
 	PlaneEq m_zOverW[c_trisPerBinChunk];
 
-	//PlaneEq m_attribPlanes[c_trisPerBinChunk * Config::c_maxVaryings];
-
 	KT_ALIGNAS(32) float m_attribsDx[c_trisPerBinChunk * Config::c_maxVaryings];
 	KT_ALIGNAS(32) float m_attribsDy[c_trisPerBinChunk * Config::c_maxVaryings];
 	KT_ALIGNAS(32) float m_attribsC[c_trisPerBinChunk * Config::c_maxVaryings];
