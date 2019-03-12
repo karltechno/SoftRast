@@ -83,7 +83,7 @@ int main(int argc, char** argv)
 	proj.m_aspect = 1280.0f / 720.0f;
 	proj.m_fov = kt::ToRadians(85.0f);
 	proj.m_nearPlane = 0.1f;
-	proj.m_farPlane = 1000.0f;
+	proj.m_farPlane = 10000.0f;
 
 	controller.SetProjectionParams(proj);
 	controller.SetPos({ 0.0f, 0.0f, -2.0f });
@@ -94,7 +94,8 @@ int main(int argc, char** argv)
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
