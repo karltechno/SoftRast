@@ -21,6 +21,10 @@ enum class IndexType
 // Todo: move into constants file
 namespace Config
 {
+// Todo: not hardcoded.
+constexpr uint32_t c_screenWidth = 1280;
+constexpr uint32_t c_screenHeight = 720;
+
 constexpr uint32_t c_binHeightLog2 = 7;
 constexpr uint32_t c_binWidthLog2 = 7;
 constexpr uint32_t c_binHeight = 1 << c_binHeightLog2;

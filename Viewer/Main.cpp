@@ -72,7 +72,7 @@ void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_col
 int main(int argc, char** argv)
 {
 	sr::input::Init();
-	sr::Window_Win32 window("SoftRast", 1280, 720);
+	sr::Window_Win32 window("SoftRast", sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
 	kt::Duration totalTime = kt::Duration::Zero();
@@ -80,7 +80,7 @@ int main(int argc, char** argv)
 	sr::FreeCamController controller;
 	
 	sr::FreeCamController::ProjectionParams proj;
-	proj.m_aspect = 1280.0f / 720.0f;
+	proj.m_aspect = float(sr::Config::c_screenWidth) / float(sr::Config::c_screenHeight);
 	proj.m_fov = kt::ToRadians(85.0f);
 	proj.m_nearPlane = 0.1f;
 	proj.m_farPlane = 10000.0f;
@@ -103,7 +103,7 @@ int main(int argc, char** argv)
 	sr::RenderContext renderCtx;
 	
 	sr::FrameBuffer framebuffer;
-	framebuffer.Init(1280, 720);
+	framebuffer.Init(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
 	while (!window.WantsQuit())
 	{

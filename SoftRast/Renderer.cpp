@@ -153,7 +153,8 @@ RenderContext::RenderContext()
 	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
 
 	// Todo: frame buffer size hardcoded!!
-	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(1280, Config::c_binWidth)) / Config::c_binWidth, uint32_t(kt::AlignValue(720, Config::c_binHeight)) / Config::c_binHeight);
+	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(Config::c_screenWidth, Config::c_binWidth)) / Config::c_binWidth, 
+				  uint32_t(kt::AlignValue(Config::c_screenHeight, Config::c_binHeight)) / Config::c_binHeight);
 
 }
 
