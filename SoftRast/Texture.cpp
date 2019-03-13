@@ -30,7 +30,7 @@ void TextureData::CreateFromFile(char const* _file)
 
 void TextureData::Clear()
 {
-	kt::Free(m_data);
+	stbi_image_free(m_data);
 }
 
 void SampleClamp_Slow(TextureData const& _tex, float const _u, float const _v, float o_colour[4])
