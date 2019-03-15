@@ -1,10 +1,44 @@
 #include "Obj.h"
 
 #include <stdio.h>
+
 #include <kt/Memory.h>
 #include <kt/HashMap.h>
 #include <kt/Logging.h>
 #include <kt/FilePath.h>
+#include <kt/File.h>
+#include <kt/Serialization.h>
+
+namespace kt
+{
+
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Model& _model)
+{
+	Serialize(_s, _model.m_meshes);
+	Serialize(_s, _model.m_materials);
+}
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Mesh& _mesh)
+{
+	Serialize(_s, _mesh.m_indexType);
+	Serialize(_s, _mesh.m_indexData);
+	Serialize(_s, _mesh.m_numIndicies);
+	Serialize(_s, _mesh.m_vertexData);
+	Serialize(_s, _mesh.m_matIdx);
+}
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Material& _mat)
+{
+	Serialize(_s, _mat.m_diffuse);
+	Serialize(_s, _mat.m_name);
+}
+
+
+}
 
 namespace sr
 {
@@ -26,11 +60,12 @@ bool operator==(TempFace const& _lhs, TempFace const& _rhs)
 }
 
 template <typename T>
-static void FlipMeshWinding(Mesh& _m, T* _idxBuff)
+static void FlipMeshWinding(Mesh& _m, void* _idxBuff)
 {
+	T* buff = (T*)_idxBuff;
 	for (uint32_t i = 0; i < _m.m_numIndicies; i += 3)
 	{
-		kt::Swap(_idxBuff[i + 1], _idxBuff[i + 2]);
+		kt::Swap(buff[i + 1], buff[i + 2]);
 	}
 }
 
@@ -66,14 +101,12 @@ struct MeshParserState
 		if (m->m_indexType == IndexType::u32)
 		{
 			uint32_t const allocSz = sizeof(uint32_t) * m_tempIndexBuffer.Size();
-			m->m_indexData.index32 = (uint32_t*)kt::Malloc(allocSz);
-			memcpy(m->m_indexData.index32, m_tempIndexBuffer.Data(), allocSz);
+			memcpy(m->m_indexData.PushBack_Raw(allocSz), m_tempIndexBuffer.Data(), allocSz);
 		}
 		else
 		{
 			uint32_t const allocSz = sizeof(uint16_t) * m_tempIndexBuffer.Size();
-			m->m_indexData.index16 = (uint16_t*)kt::Malloc(allocSz);
-			uint16_t *pDst = m->m_indexData.index16;
+			uint16_t *pDst = (uint16_t*)m->m_indexData.PushBack_Raw(allocSz);
 			for (uint32_t idx32 : m_tempIndexBuffer)
 			{
 				*pDst++ = (uint16_t)idx32;
@@ -81,9 +114,8 @@ struct MeshParserState
 		}
 
 		m->m_numIndicies = m_tempIndexBuffer.Size();
-		m->m_numVertices = m_tempVerticies.Size();
-		m->m_vertexData = (Vertex*)kt::Malloc(sizeof(Vertex) * m->m_numVertices);
-		memcpy(m->m_vertexData, m_tempVerticies.Data(), sizeof(Vertex) * m->m_numVertices);
+		Vertex* vertexWrite = m->m_vertexData.PushBack_Raw(m_tempVerticies.Size());
+		memcpy(vertexWrite, m_tempVerticies.Data(), sizeof(Vertex) * m_tempVerticies.Size());
 
 		m_faceMap.Clear();
 		m_tempVerticies.Clear();
@@ -339,8 +371,29 @@ Model::~Model()
 	}
 }
 
-bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  const _flags)
+bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t const _flags)
 {
+	kt::String1024 binpath;
+	binpath.AppendFmt("%s.bin", _path);
+	
+	if (kt::FileExists(binpath.Data()))
+	{
+		FILE* cacheFile = fopen(binpath.Data(), "rb");
+		if (cacheFile)
+		{
+			KT_LOG_INFO("Found OBJ cache %s", binpath.Data());
+			kt::FileReader reader(cacheFile);
+			kt::ISerializer serializer(&reader, 0);
+			kt::Serialize(&serializer, *this);
+			return true; // todo: error checking
+		}
+		else
+		{
+			KT_LOG_ERROR("Failed to open obj cache file %s", binpath.Data());
+		}
+	}
+
+
 	FILE* f = fopen(_path, "r");
 	if (!f)
 	{
@@ -348,6 +401,8 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 		return false;
 	}
 	KT_SCOPE_EXIT(fclose(f));
+
+	KT_LOG_INFO("No cache found, parsing obj %s.", _path);
 
 	Clear();
 
@@ -486,13 +541,26 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t  co
 		{
 			if (mesh.m_indexType == IndexType::u16)
 			{
-				FlipMeshWinding(mesh, mesh.m_indexData.index16);
+				FlipMeshWinding<uint16_t>(mesh, mesh.m_indexData.Data());
 			}
 			else
 			{
-				FlipMeshWinding(mesh, mesh.m_indexData.index32);
+				FlipMeshWinding<uint32_t>(mesh, mesh.m_indexData.Data());
 			}
 		}
+	}
+
+	// Now serialize to binary.
+	FILE* cacheFile = fopen(binpath.Data(), "wb");
+	if (cacheFile)
+	{
+		kt::FileWriter writer(cacheFile);
+		kt::ISerializer serializer(&writer, 0);
+		kt::Serialize(&serializer, *this);
+	}
+	else
+	{
+		KT_LOG_ERROR("Failed to write obj cache file %s.", binpath.Data());
 	}
 
 	return true;
@@ -509,8 +577,8 @@ void Model::Clear()
 
 void Mesh::Clear()
 {
-	kt::Free(m_vertexData);
-	kt::Free(m_indexData.index16);
+	m_vertexData.ClearAndFree();
+	m_indexData.ClearAndFree();
 }
 
 }

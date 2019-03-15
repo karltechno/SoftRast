@@ -23,26 +23,30 @@ struct Vertex
 
 struct Mesh
 {
+	KT_NO_COPY(Mesh);
+
+	Mesh() = default;
+	Mesh(Mesh&&) = default;
+	Mesh& operator=(Mesh&&) = default;
+
 	void Clear();
 
-	union
-	{
-		uint16_t* index16 = nullptr;
-		uint32_t* index32;
-	} m_indexData;
+	kt::Array<uint8_t> m_indexData;
 
 	IndexType m_indexType = IndexType::u16;
-
 	uint32_t m_numIndicies = 0;
 
-	Vertex* m_vertexData = nullptr;
-	uint32_t m_numVertices = 0;
+	kt::Array<Vertex> m_vertexData;
 
 	uint32_t m_matIdx = 0;
 };
 
 struct Material
 {
+	Material() = default;
+	Material(Material&&) = default;
+	Material& operator=(Material&&) = default;
+
 	kt::String128 m_name;
 	Tex::TextureData m_diffuse;
 };
@@ -65,8 +69,20 @@ struct Model
 	kt::Array<Material> m_materials;
 };
 
-
 }
 
 
+}
+
+namespace kt
+{
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Model& _model);
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Mesh& _mesh);
+
+template<>
+void Serialize(ISerializer* _s, sr::Obj::Material& _mat);
 }

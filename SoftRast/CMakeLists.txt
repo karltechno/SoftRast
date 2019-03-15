@@ -8,6 +8,8 @@ set(SOFT_RAST_FILES
 	"Texture.cpp"
 	"stb_image.h"
     "stb_image.cpp"
+    "stb_image_resize.h"
+    "stb_image_resize.cpp"
     "Renderer.h"
     "Renderer.cpp"
     "Binning.h"
