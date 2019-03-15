@@ -20,7 +20,37 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 		return;
 	}
 
+	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
+
+#if 1
 	// todo should pass in float ptr?
+	KT_ALIGNAS(32) float du[8][2];
+	KT_ALIGNAS(32) float dv[8][2];
+
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		du[i][0] = _varyings[i * stride];
+		du[i][1] = _varyings[i * stride + 1];
+
+		dv[i][0] = _varyings[i * stride + 2];
+		dv[i][1] = _varyings[i * stride + 3];
+	}
+	
+	auto len = [](float* ptr) -> float
+	{
+		return sqrtf(ptr[0] * ptr[0] + ptr[1] * ptr[1]);
+	};
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		float const col = kt::Clamp(kt::Max(len(dv[i]), len(du[i])) * 10.0f, 0.0f, 1.0f);
+		o_colour[i * 4] = o_colour[i * 4 + 1] = o_colour[i * 4 + 2] = col;
+		o_colour[i * 4 + 3] = 1.0f;
+	}
+	return;
+#endif
+
 	KT_ALIGNAS(32) float u[8];
 	KT_ALIGNAS(32) float v[8];
 
@@ -29,8 +59,8 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		u[i] = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + uOffs];
-		v[i] = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + vOffs];
+		u[i] = _varyings[4 + i * stride + uOffs];
+		v[i] = _varyings[4 + i * stride + vOffs];
 	}
 
 
@@ -42,7 +72,8 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 
 void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {
-	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float);
+	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
+	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float) + 4;
 	uint32_t const greenOffset = redOffset + 1;
 	uint32_t const blueOffset = greenOffset + 1;
 
@@ -55,9 +86,9 @@ void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_col
 		o_colour[i * 4 + 1] = 1.0f;
 		o_colour[i * 4 + 2] = 1.0f;
 #else
-		float const r = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + redOffset];
-		float const g = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + greenOffset];
-		float const b = _varyings[i * (sizeof(sr::Obj::Vertex) / sizeof(float)) + blueOffset];
+		float const r = _varyings[i * stride + redOffset];
+		float const g = _varyings[i * stride + greenOffset];
+		float const b = _varyings[i * stride + blueOffset];
 
 		float const mul = 1.0f / sqrtf(r * r + g * g + b * b);
 
@@ -92,10 +123,10 @@ int main(int argc, char** argv)
 	
 	sr::Obj::Model model;
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
-	model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	//model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
 	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
@@ -119,9 +150,8 @@ int main(int argc, char** argv)
 			sr::DrawCall call;
 			call.m_frameBuffer = &framebuffer;
 			call.m_mvp = controller.GetCam().GetCachedViewProj();
-			call.m_attributeBuffer.m_ptr = (uint8_t*)mesh.m_vertexData;
-			call.m_attributeBuffer.m_stride = sizeof(sr::Obj::Vertex);
-			call.m_attributeBuffer.m_num = mesh.m_numVertices;
+
+			call.SetAttributeBuffer(mesh.m_vertexData, sizeof(sr::Obj::Vertex), mesh.m_numVertices, offsetof(sr::Obj::Vertex, uv) / sizeof(float));
 
 			call.m_positionBuffer.m_ptr = (uint8_t*)mesh.m_vertexData;
 			call.m_positionBuffer.m_stride = sizeof(sr::Obj::Vertex);

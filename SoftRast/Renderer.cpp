@@ -127,8 +127,9 @@ DrawCall& DrawCall::SetPositionBuffer(void const* _buffer, uint32_t const _strid
 	return *this;
 }
 
-DrawCall& DrawCall::SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num)
+DrawCall& DrawCall::SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num, uint32_t const _uvOffset)
 {
+	m_uvOffset = _uvOffset;
 	m_attributeBuffer.m_num = _num;
 	m_attributeBuffer.m_ptr = _buffer;
 	m_attributeBuffer.m_stride = _stride;

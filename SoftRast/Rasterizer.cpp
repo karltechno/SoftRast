@@ -256,7 +256,8 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 
 				uint32_t const numFragsToOutput = kt::Popcnt(mask8x8);
 				o_buffer.ReserveFragments(numFragsToOutput);
-				o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride;
+
+				o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride + 4; // 4 for derivs, make constant?
 
 				do 
 				{
@@ -283,6 +284,119 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 	}
 }
 
+static void ComputeInterpolants(ThreadRasterCtx const& _ctx, BinChunk const* const* _chunks, FragmentBuffer& _buffer, uint32_t* o_fragsPerDrawCall)
+{
+	uint32_t fragIdx = 0;
+	FragmentBuffer::Frag const* frag = &_buffer.m_fragments[fragIdx++];
+
+	float* outAttribs = _buffer.m_interpolants;
+
+	for (;;)
+	{
+		uint32_t packedTriChunkIdx = frag->packedChunkTriIdx;
+
+		BinChunk const& chunk = *_chunks[frag->chunkIdx];
+		uint32_t const curDrawCallIdx = chunk.m_drawCallIdx;
+		KT_ASSERT(curDrawCallIdx < _ctx.m_numDrawCalls);
+
+		uint32_t const numAttribsNoDeriv = chunk.m_attribsPerTri;
+		uint32_t const numAttribsAvxNoDeriv = (numAttribsNoDeriv + 7) / 8;
+
+		__m256 attribPlaneDx[2];
+		__m256 attribPlaneDy[2];
+		__m256 attribPlaneC[2];
+
+		for (uint32_t i = 0; i < numAttribsAvxNoDeriv; ++i)
+		{
+			attribPlaneDx[i] = _mm256_load_ps(&chunk.m_attribsDx[i * 8 + numAttribsNoDeriv * frag->triIdx]);
+			attribPlaneDy[i] = _mm256_load_ps(&chunk.m_attribsDy[i * 8 + numAttribsNoDeriv * frag->triIdx]);
+			attribPlaneC[i] = _mm256_load_ps(&chunk.m_attribsC[i * 8 + numAttribsNoDeriv * frag->triIdx]);
+		}
+
+		BinChunk::PlaneEq const& recipW = chunk.m_recipW[frag->triIdx];
+
+		__m256 recipW_dx = _mm256_broadcast_ss(&recipW.dx);
+		__m256 recipW_dy = _mm256_broadcast_ss(&recipW.dy);
+		__m256 recipW_c = _mm256_broadcast_ss(&recipW.c0);
+
+		__m256 u4_v4_dx;
+		__m256 u4_v4_dy;
+		__m256 u4_v4_c;
+
+		uint32_t const uOffset = _ctx.m_drawCalls[curDrawCallIdx].m_uvOffset;
+
+		{
+			__m256 const udx = _mm256_broadcast_ss(&chunk.m_attribsDx[frag->triIdx * numAttribsNoDeriv + uOffset]);
+			__m256 const vdx = _mm256_broadcast_ss(&chunk.m_attribsDx[frag->triIdx * numAttribsNoDeriv + uOffset + 1]);
+			u4_v4_dx = _mm256_permute2f128_ps(udx, vdx, (0 | (2 << 4)));
+		}
+		{
+			__m256 const udy = _mm256_broadcast_ss(&chunk.m_attribsDy[frag->triIdx * numAttribsNoDeriv + uOffset]);
+			__m256 const vdy = _mm256_broadcast_ss(&chunk.m_attribsDy[frag->triIdx * numAttribsNoDeriv + uOffset + 1]);
+			u4_v4_dy = _mm256_permute2f128_ps(udy, vdy, (0 | (2 << 4)));
+		}
+		{
+			__m256 const uc = _mm256_broadcast_ss(&chunk.m_attribsC[frag->triIdx * numAttribsNoDeriv + uOffset]);
+			__m256 const vc = _mm256_broadcast_ss(&chunk.m_attribsC[frag->triIdx * numAttribsNoDeriv + uOffset + 1]);
+			u4_v4_c = _mm256_permute2f128_ps(uc, vc, (0 | (2 << 4)));
+		}
+	
+		static_assert(Config::c_maxVaryings <= 16, "SIMD code assumed maxvaryings <= 16.");
+
+		do
+		{
+			static __m256 const interleaved_0_1_0_1 = _mm256_setr_ps(0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f);
+			__m256 const interleaved_0_0_1_1 = _mm256_shuffle_ps(interleaved_0_1_0_1, interleaved_0_1_0_1, _MM_SHUFFLE(1, 1, 0, 0));
+
+			__m256 const fragX = _mm256_set1_ps(float(frag->x));
+			__m256 const fragY = _mm256_set1_ps(float(frag->y));
+
+			__m256 const frag_x0_x1_x0_x1 = _mm256_add_ps(interleaved_0_1_0_1, fragX);
+			__m256 const frag_y0_y0_y1_y1 = _mm256_add_ps(interleaved_0_0_1_1, fragY);
+
+			// duvdx = uv_x1y0 - uv_x0y0 
+			// duvdy = uv_x0y1 - uv_x0y0
+			
+			__m256 const uvOverW_x0y0_x1y0_x0y1_x1y1 = _mm256_fmadd_ps(u4_v4_dy, frag_y0_y0_y1_y1, _mm256_fmadd_ps(u4_v4_dx, frag_x0_x1_x0_x1, u4_v4_c));
+
+			// evaluate recipW for quad (though we only need 3 vals denoted in above comment)
+			__m256 const recipW_x0y0_x1y0_x0y1_x1y1 = _mm256_div_ps(_mm256_set1_ps(1.0f), _mm256_fmadd_ps(recipW_dx, frag_x0_x1_x0_x1, _mm256_fmadd_ps(recipW_dy, frag_y0_y0_y1_y1, recipW_c)));
+
+			__m256 const uv_eval_x0y0_x1y0_x0y1_x1y1 = _mm256_mul_ps(recipW_x0y0_x1y0_x0y1_x1y1, uvOverW_x0y0_x1y0_x0y1_x1y1);
+
+			// swizzle and calculate derivatives.
+			__m256 const uv_eval_x0y0 = _mm256_shuffle_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0_x1y0_x0y1_x1y1, _MM_SHUFFLE(0, 0, 0, 0));
+			__m256 const derivs = _mm256_sub_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0);
+
+			static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 1 + 4, 2, 2 + 4, 0, 0, 0, 0);
+			__m128 const duvdx_duvdy = _mm256_castps256_ps128(_mm256_permutevar8x32_ps(derivs, deriv_permute_mask));
+			_mm_storeu_ps(outAttribs, duvdx_duvdy);
+			outAttribs += 4;
+
+			// Broadcast original pixel 1/w for rest of attributes.
+			__m256 const recipW_x0y0 = _mm256_shuffle_ps(recipW_x0y0_x1y0_x0y1_x1y1, recipW_x0y0_x1y0_x0y1_x1y1, _MM_SHUFFLE(0, 0, 0, 0));
+
+			for (uint32_t i = 0; i < numAttribsAvxNoDeriv; ++i)
+			{
+				__m256 const attribs = _mm256_fmadd_ps(attribPlaneDy[i], fragY, _mm256_fmadd_ps(attribPlaneDx[i], fragX, attribPlaneC[i]));
+				_mm256_storeu_ps(outAttribs + i * 8, _mm256_mul_ps(recipW_x0y0, attribs));
+			}
+
+			outAttribs += numAttribsNoDeriv;
+
+			++o_fragsPerDrawCall[curDrawCallIdx];
+
+			if (fragIdx == _buffer.m_numFragments)
+			{
+				return;
+			}
+
+			frag = &_buffer.m_fragments[fragIdx++];
+
+		} while (frag->packedChunkTriIdx == packedTriChunkIdx);
+	}
+}
+
 static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _tileIdx, BinChunk const* const* _chunks, FragmentBuffer& _buffer)
 {
 	// Fill interpolants.
@@ -294,65 +408,7 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 	uint32_t* fragsPerCall = (uint32_t*)KT_ALLOCA(sizeof(uint32_t) * _ctx.m_numDrawCalls);
 	memset(fragsPerCall, 0, sizeof(uint32_t) * _ctx.m_numDrawCalls);
 
-	{
-		uint32_t fragIdx = 0;
-		FragmentBuffer::Frag const* frag = &_buffer.m_fragments[fragIdx++];
-
-		float* outAttribs = _buffer.m_interpolants;
-
-		for (;;)
-		{
-			uint32_t packedTriChunkIdx = frag->packedChunkTriIdx;
-
-			BinChunk const& chunk = *_chunks[frag->chunkIdx];
-			uint32_t const curDrawCallIdx = chunk.m_drawCallIdx;
-			KT_ASSERT(curDrawCallIdx < _ctx.m_numDrawCalls);
-
-			BinChunk::PlaneEq const& recipW = chunk.m_recipW[frag->triIdx];
-			uint32_t const numAttribs = chunk.m_attribsPerTri;
-			uint32_t const numAttribsAvx = (numAttribs + 7) / 8;
-
-			__m256 attribPlaneDx[2];
-			__m256 attribPlaneDy[2];
-			__m256 attribPlaneC[2];
-
-			for (uint32_t i = 0; i < numAttribsAvx; ++i)
-			{
-				attribPlaneDx[i] = _mm256_load_ps(&chunk.m_attribsDx[i * 8 + numAttribs * frag->triIdx]);
-				attribPlaneDy[i] = _mm256_load_ps(&chunk.m_attribsDy[i * 8 + numAttribs * frag->triIdx]);
-				attribPlaneC[i] = _mm256_load_ps(&chunk.m_attribsC[i * 8 + numAttribs * frag->triIdx]);
-			}
-
-			static_assert(Config::c_maxVaryings <= 16, "SIMD code assumed maxvaryings <= 16.");
-
-			do
-			{
-				__m256 const fragX = _mm256_set1_ps(float(frag->x));
-				__m256 const fragY = _mm256_set1_ps(float(frag->y));
-				__m256 const recipWavx = _mm256_div_ps(_mm256_set1_ps(1.0f), _mm256_set1_ps(recipW.c0 + float(frag->x) * recipW.dx + float(frag->y) * recipW.dy));
-				for (uint32_t i = 0; i < numAttribsAvx; ++i)
-				{
-					// Todo: derivatives
-					__m256 const attribs = _mm256_fmadd_ps(attribPlaneDy[i], fragY, _mm256_fmadd_ps(attribPlaneDx[i], fragX, attribPlaneC[i]));
-					_mm256_storeu_ps(outAttribs + i * 8, _mm256_mul_ps(recipWavx, attribs));
-				}
-
-				outAttribs += numAttribs;
-
-				++fragsPerCall[curDrawCallIdx];
-				
-				if (fragIdx == _buffer.m_numFragments)
-				{
-					goto do_shade;
-				}
-
-				frag = &_buffer.m_fragments[fragIdx++];
-
-			} while (frag->packedChunkTriIdx == packedTriChunkIdx);
-		}
-	}
-
-do_shade:
+	ComputeInterpolants(_ctx, _chunks, _buffer, fragsPerCall);
 	   
 	float const* interpolants = _buffer.m_interpolants;
 	uint32_t globalFragIdx = 0;
@@ -371,7 +427,8 @@ do_shade:
 
 			uint32_t const writePixels = kt::Min(8u, numFragsForCall - drawCallFrag);
 
-			interpolants += writePixels * (call.m_attributeBuffer.m_stride / sizeof(float));
+			// Todo: 4 constant for derivatives
+			interpolants += writePixels * (4 + call.m_attributeBuffer.m_stride / sizeof(float));
 
 			for (uint32_t i = 0; i < writePixels; ++i)
 			{

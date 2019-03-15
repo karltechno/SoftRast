@@ -67,13 +67,15 @@ struct GenericDrawBuffer
 
 struct DrawCall
 {
+	static const uint32_t UV_OFFSET_INVALID = 0xFFFFFFFF;
+
 	DrawCall();
 
 	DrawCall& SetVertexShader(VertexShaderFn* _fn, void const* _uniforms, uint32_t const _outAttributeStrideBytes);
 	DrawCall& SetPixelShader(PixelShaderFn* _fn, void const* _uniforms);
 	DrawCall& SetIndexBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetPositionBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
-	DrawCall& SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
+	DrawCall& SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num, uint32_t const _uvOffset = 0);
 	DrawCall& SetFrameBuffer(FrameBuffer const* _buffer);
 	DrawCall& SetMVP(kt::Mat4 const& _mvp);
 
@@ -87,6 +89,8 @@ struct DrawCall
 	GenericDrawBuffer m_indexBuffer;
 	GenericDrawBuffer m_positionBuffer;
 	GenericDrawBuffer m_attributeBuffer;
+
+	uint32_t m_uvOffset = 0;
 	
 	FrameBuffer const* m_frameBuffer = nullptr;
 
