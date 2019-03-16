@@ -1,8 +1,11 @@
 #pragma once
 #include <stdint.h>
+
+#include <kt/Macros.h>
+
 #include "SoftRastTypes.h"
-#include "kt/Macros.h"
 #include "TaskSystem.h"
+#include "Config.h"
 
 namespace sr
 {

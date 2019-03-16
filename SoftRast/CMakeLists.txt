@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.2)
 
 set(SOFT_RAST_FILES
+    "Config.h"
     "Rasterizer.cpp"
     "Rasterizer.h"
 	"SoftRastTypes.h"

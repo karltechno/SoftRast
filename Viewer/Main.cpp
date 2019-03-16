@@ -9,6 +9,7 @@
 #include "Renderer.h"
 #include "Platform/Window_Win32.h"
 #include "Rasterizer.h"
+#include "Config.h"
 
 void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
 {

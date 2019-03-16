@@ -2,11 +2,13 @@
 #include <immintrin.h>
 #include <stdint.h>
 
+#include <kt/Array.h>
+#include <kt/Mat4.h>
+
 #include "SoftRastTypes.h"
-#include "kt/Array.h"
-#include "kt/Mat4.h"
 #include "TaskSystem.h"
 #include "Binning.h"
+#include "Config.h"
 
 
 namespace sr

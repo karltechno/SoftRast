@@ -7,6 +7,8 @@
 
 #include "SIMDUtil.h"
 #include "SoftRastTypes.h"
+#include "Config.h"
+
 
 namespace sr
 {
