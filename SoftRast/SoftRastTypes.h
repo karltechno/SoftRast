@@ -38,6 +38,8 @@ constexpr uint32_t c_maxVaryings = 16;
 
 constexpr uint32_t c_simdWidth = 8;
 
+constexpr uint32_t c_maxTexDimLog2 = 14; // 16k
+
 // Todo: use these values, also switch to reverse-z
 constexpr float c_depthMin = 0.0f;
 constexpr float c_depthMax = 1.0f;

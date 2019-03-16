@@ -16,6 +16,7 @@ set(SOFT_RAST_FILES
     "Binning.cpp"
     "TaskSystem.h"
     "TaskSystem.cpp"
+    "SIMDUtil.h"
 )
 
 add_library(SoftRast ${SOFT_RAST_FILES})
