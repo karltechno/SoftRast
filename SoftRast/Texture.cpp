@@ -39,6 +39,7 @@ void TextureData::CreateFromFile(char const* _file)
 	if (!srcImageData)
 	{
 		KT_LOG_ERROR("Failed to load texture: %s", _file);
+		return;
 	}
 
 	KT_SCOPE_EXIT(stbi_image_free(srcImageData));
