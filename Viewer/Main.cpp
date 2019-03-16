@@ -22,36 +22,13 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 
 	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
 
-#if 0
-	KT_ALIGNAS(32) float du[8][2];
-	KT_ALIGNAS(32) float dv[8][2];
-
-
-	for (uint32_t i = 0; i < 8; ++i)
-	{
-		du[i][0] = _varyings[i * stride];
-		du[i][1] = _varyings[i * stride + 1];
-
-		dv[i][0] = _varyings[i * stride + 2];
-		dv[i][1] = _varyings[i * stride + 3];
-	}
-	
-	auto len = [](float* ptr) -> float
-	{
-		return sqrtf(ptr[0] * ptr[0] + ptr[1] * ptr[1]);
-	};
-
-	for (uint32_t i = 0; i < 8; ++i)
-	{
-		float const col = kt::Clamp(kt::Max(len(dv[i]), len(du[i])) * 10.0f, 0.0f, 1.0f);
-		o_colour[i * 4] = o_colour[i * 4 + 1] = o_colour[i * 4 + 2] = col;
-		o_colour[i * 4 + 3] = 1.0f;
-	}
-	return;
-#endif
-
 	KT_ALIGNAS(32) float u[8];
 	KT_ALIGNAS(32) float v[8];
+
+	KT_ALIGNAS(32) float dudx[8];
+	KT_ALIGNAS(32) float dudy[8];
+	KT_ALIGNAS(32) float dvdx[8];
+	KT_ALIGNAS(32) float dvdy[8];
 
 	uint32_t const uOffs = offsetof(sr::Obj::Vertex, uv) / sizeof(float);
 	uint32_t const vOffs = 1 + offsetof(sr::Obj::Vertex, uv) / sizeof(float);
@@ -60,13 +37,23 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 	{
 		u[i] = _varyings[4 + i * stride + uOffs];
 		v[i] = _varyings[4 + i * stride + vOffs];
+
+		dudx[i] = _varyings[i * stride];
+		dudy[i] = _varyings[i * stride + 1];
+		dvdx[i] = _varyings[i * stride + 2];
+		dvdy[i] = _varyings[i * stride + 3];
 	}
 
 
+
+#if 0
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		sr::Tex::SampleWrap_Slow(*tex, u[i], v[i], &o_colour[i * 4]);
+		sr::Tex::SampleWrap_Slow(*tex, 0, u[i], v[i], &o_colour[i * 4]);
 	}
+#else
+	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
+#endif
 }
 
 void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)

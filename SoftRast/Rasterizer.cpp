@@ -370,10 +370,12 @@ static void ComputeInterpolants(ThreadRasterCtx const& _ctx, BinChunk const* con
 				// swizzle and calculate derivatives.
 				__m256 const uv_eval_x0y0 = _mm256_shuffle_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0_x1y0_x0y1_x1y1, _MM_SHUFFLE(0, 0, 0, 0));
 				__m256 const derivs = _mm256_sub_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0);
-
-				static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 1 + 4, 2, 2 + 4, 0, 0, 0, 0);
-				__m128 const duvdx_duvdy = _mm256_castps256_ps128(_mm256_permutevar8x32_ps(derivs, deriv_permute_mask));
-				_mm_storeu_ps(outAttribs, duvdx_duvdy);
+				// 4 du then 4 dv -> [0, dx, dy]
+				//static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 1 + 4, 2, 2 + 4, 0, 0, 0, 0);
+				static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 2, 1 + 4, 2 + 4, 0, 0, 0, 0);
+				__m128 const finalDerivs = _mm256_castps256_ps128(_mm256_permutevar8x32_ps(derivs, deriv_permute_mask));
+				// Storing: dudx, dudy, dvdx, dvdy
+				_mm_storeu_ps(outAttribs, finalDerivs);
 				outAttribs += 4;
 
 				// Broadcast original pixel 1/w for rest of attributes.
