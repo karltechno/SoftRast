@@ -1,6 +1,8 @@
 #pragma once
 #include <stdint.h>
 
+#define SR_USE_REVERSE_Z (1)
+
 namespace sr
 {
 
@@ -26,9 +28,13 @@ constexpr uint32_t c_simdWidth = 8;
 
 constexpr uint32_t c_maxTexDimLog2 = 14; // 16k
 
-// Todo: use these values, also switch to reverse-z
+#if SR_USE_REVERSE_Z
+constexpr float c_depthMin = 1.0f;
+constexpr float c_depthMax = 0.0f;
+#else
 constexpr float c_depthMin = 0.0f;
 constexpr float c_depthMax = 1.0f;
+#endif
 
 }
 

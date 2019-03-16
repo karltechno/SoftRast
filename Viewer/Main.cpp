@@ -100,8 +100,14 @@ int main(int argc, char** argv)
 	sr::FreeCamController::ProjectionParams proj;
 	proj.m_aspect = float(sr::Config::c_screenWidth) / float(sr::Config::c_screenHeight);
 	proj.m_fov = kt::ToRadians(85.0f);
+
+#if SR_USE_REVERSE_Z
+	proj.m_nearPlane = 10000.0f;
+	proj.m_farPlane = 0.1f;
+#else
 	proj.m_nearPlane = 0.1f;
 	proj.m_farPlane = 10000.0f;
+#endif
 
 	controller.SetProjectionParams(proj);
 	controller.SetPos({ 0.0f, 0.0f, -2.0f });

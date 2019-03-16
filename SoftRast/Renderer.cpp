@@ -179,7 +179,7 @@ void RenderContext::ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color, bool
 		{
 			for (uint32_t j = 0; j < (Config::c_binHeight * Config::c_binWidth); ++j)
 			{
-				_buffer.m_depthTiles[i].m_depth[j] = 1.0f;
+				_buffer.m_depthTiles[i].m_depth[j] = Config::c_depthMax;
 			}
 		}
 	}

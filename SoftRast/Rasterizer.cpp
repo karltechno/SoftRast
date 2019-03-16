@@ -73,6 +73,15 @@ struct ZOverW8x8
 	__m256 dy;
 };
 
+KT_FORCEINLINE __m256 DepthCmpMask(__m256 _old, __m256 _new)
+{
+#if SR_USE_REVERSE_Z
+	return _mm256_and_ps(_mm256_cmp_ps(_new, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(_new, _old, _CMP_GT_OQ));
+#else
+	return _mm256_and_ps(_mm256_cmp_ps(_new, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(_new, _old, _CMP_LT_OQ));
+#endif
+}
+
 static uint64_t ComputeBlockMask8x8_DepthOnly
 (
 	ZOverW8x8 const& _zOverW,
@@ -94,7 +103,7 @@ static uint64_t ComputeBlockMask8x8_DepthOnly
 		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
 		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
 
-		__m256 depthCmpMask = _mm256_and_ps(_mm256_cmp_ps(zOverW, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, zOverW, _CMP_GT_OQ));
+		__m256 depthCmpMask = DepthCmpMask(depthGather, zOverW);
 
 		uint64_t const laneMask = _mm256_movemask_ps(depthCmpMask);
 
@@ -149,7 +158,7 @@ static uint64_t ComputeBlockMask8x8
 		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
 		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
 
-		__m256 depthCmpMask = _mm256_and_ps(_mm256_cmp_ps(zOverW, _mm256_setzero_ps(), _CMP_GT_OQ), _mm256_cmp_ps(depthGather, zOverW, _CMP_GT_OQ));
+		__m256 depthCmpMask = DepthCmpMask(depthGather, zOverW);
 		depthCmpMask = _mm256_and_ps(_mm256_castsi256_ps(edgeMask), depthCmpMask);
 
 		uint64_t const laneMask = _mm256_movemask_ps(depthCmpMask);
