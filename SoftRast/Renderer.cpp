@@ -23,8 +23,8 @@ void FrameBuffer::Init(uint32_t _width, uint32_t _height, bool _colour /*= true*
 	m_height = _height;
 	m_width = _width;
 
-	m_tilesX = (uint32_t)kt::AlignValue(m_width, Config::c_binWidth) >> Config::c_binWidthLog2;
-	m_tilesY = (uint32_t)kt::AlignValue(m_height, Config::c_binHeight) >> Config::c_binHeightLog2;
+	m_tilesX = (uint32_t)kt::AlignUp(m_width, Config::c_binWidth) >> Config::c_binWidthLog2;
+	m_tilesY = (uint32_t)kt::AlignUp(m_height, Config::c_binHeight) >> Config::c_binHeightLog2;
 
 	if (_colour)
 	{
@@ -154,8 +154,8 @@ RenderContext::RenderContext()
 	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
 
 	// Todo: frame buffer size hardcoded!!
-	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignValue(Config::c_screenWidth, Config::c_binWidth)) / Config::c_binWidth, 
-				  uint32_t(kt::AlignValue(Config::c_screenHeight, Config::c_binHeight)) / Config::c_binHeight);
+	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignUp(Config::c_screenWidth, Config::c_binWidth)) / Config::c_binWidth, 
+				  uint32_t(kt::AlignUp(Config::c_screenHeight, Config::c_binHeight)) / Config::c_binHeight);
 
 }
 
