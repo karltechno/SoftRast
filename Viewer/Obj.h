@@ -53,6 +53,7 @@ struct Material
 
 enum LoadFlags : uint32_t
 {
+	None = 0x0,
 	FlipWinding = 0x1,
 	GenNormals = 0x2, // todo
 	FlipUVs = 0x4
