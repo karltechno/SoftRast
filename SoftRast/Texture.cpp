@@ -176,6 +176,33 @@ __m256i CalcMipLevels(TextureData const& _tex, __m256 _dudx, __m256 _dudy, __m25
 	return _mm256_min_epi32(_mm256_set1_epi32(_tex.m_numMips - 1), _mm256_max_epi32(_mm256_setzero_si256(), simdutil::ExtractExponent(maxCoord)));
 }
 
+
+static __m256i BoundCoordsWrap(__m256i _coord, __m256i _bound)
+{
+	// Assuming width and height are powers of two.
+	__m256i const one = _mm256_set1_epi32(1);
+	return _mm256_and_si256(_coord, _mm256_sub_epi32(_bound, one));
+}
+
+static void GatherTexels(TextureData const& _tex, uint32_t _mips[8], __m256i _pitch, __m256i _x, __m256i _y, float o_texels[8 * 4])
+{
+	__m256i const offs = _mm256_add_epi32(_mm256_mullo_epi32(_pitch, _y), _mm256_mullo_epi32(_x, _mm256_set1_epi32(_tex.m_bytesPerPixel)));
+
+	KT_ALIGNAS(32) uint32_t offsArr[8];
+
+	_mm256_store_si256((__m256i*)offsArr, offs);
+	static const float recip255 = 1.0f / 255.0f;
+
+	for (uint32_t i = 0; i < 8; ++i)
+	{
+		uint8_t const* pix = _tex.m_texels.Data() + (offsArr[i] + _tex.m_mipOffsets[_mips[i]]);
+		o_texels[0 + i * 4] = pix[0] * recip255;
+		o_texels[1 + i * 4] = pix[1] * recip255;
+		o_texels[2 + i * 4] = pix[2] * recip255;
+		o_texels[3 + i * 4] = pix[3] * recip255;
+	}
+}
+
 void SampleWrap
 (
 	TextureData const& _tex,
@@ -208,41 +235,75 @@ void SampleWrap
 	__m256 const absU = _mm256_xor_ps(uSign, _u);
 	__m256 const absV = _mm256_xor_ps(vSign, _v);
 
-	// Todo: naive casting faster than floor (roundps) ?
 	__m256 const fracU = _mm256_sub_ps(absU, _mm256_floor_ps(absU));
 	__m256 const fracV = _mm256_sub_ps(absV, _mm256_floor_ps(absV));
 
-	__m256 const uWrap = _mm256_blendv_ps(fracU, _mm256_sub_ps(_mm256_set1_ps(1.0f), fracU), uSign);
-	__m256 const vWrap = _mm256_blendv_ps(fracV, _mm256_sub_ps(_mm256_set1_ps(1.0f), fracV), vSign);
+	__m256 const fracU_wrap = _mm256_blendv_ps(fracU, _mm256_sub_ps(_mm256_set1_ps(1.0f), fracU), uSign);
+	__m256 const fracV_wrap = _mm256_blendv_ps(fracV, _mm256_sub_ps(_mm256_set1_ps(1.0f), fracV), vSign);
 
 	__m256 const widthF = _mm256_cvtepi32_ps(width);
-	__m256i const widthMinusOne = _mm256_sub_epi32(width, one);
-
 	__m256 const heightF = _mm256_cvtepi32_ps(height);
-	__m256i const heightMinusOne = _mm256_sub_epi32(height, one);
 
-	__m256i const clampU = _mm256_min_epi32(widthMinusOne, _mm256_max_epi32(
-		_mm256_setzero_si256(), _mm256_cvtps_epi32(_mm256_mul_ps(widthF, uWrap))));
+	__m256 const u_texSpace = _mm256_mul_ps(widthF, fracU_wrap);
+	__m256 const v_texSpace = _mm256_mul_ps(heightF, fracV_wrap);
 
-	__m256i const clampV = _mm256_min_epi32(heightMinusOne, _mm256_max_epi32(
-		_mm256_setzero_si256(), _mm256_cvtps_epi32(_mm256_mul_ps(heightF, vWrap))));
+	__m256 const u_texSpace_floor = _mm256_floor_ps(u_texSpace);
+	__m256 const v_texSpace_floor = _mm256_floor_ps(v_texSpace);
 
-	__m256i const offs = _mm256_add_epi32(_mm256_mullo_epi32(pitch, clampV), _mm256_mullo_epi32(clampU, _mm256_set1_epi32(_tex.m_bytesPerPixel)));
+	__m256 const u_interp = _mm256_sub_ps(u_texSpace, u_texSpace_floor);
+	__m256 const v_interp = _mm256_sub_ps(v_texSpace, v_texSpace_floor);
 
-	KT_ALIGNAS(32) uint32_t offsArr[8];
+	__m256i const x0 = BoundCoordsWrap(_mm256_cvtps_epi32(u_texSpace_floor), width);
+	__m256i const y0 = BoundCoordsWrap(_mm256_cvtps_epi32(v_texSpace_floor), height);
+
+	__m256i const x1 = BoundCoordsWrap(_mm256_add_epi32(x0, one), width);
+	__m256i const y1 = BoundCoordsWrap(_mm256_add_epi32(y0, one), height);
+
 	KT_ALIGNAS(32) uint32_t mips[8];
-
-	_mm256_store_si256((__m256i*)offsArr, offs);
 	_mm256_store_si256((__m256i*)mips, mipFloor);
-	static const float recip255 = 1.0f / 255.0f;
 
-	for (uint32_t i = 0; i < 8; ++i)
+	KT_ALIGNAS(32) float temp0[8 * 4];
+	KT_ALIGNAS(32) float temp1[8 * 4];
+
+	GatherTexels(_tex, mips, pitch, x0, y0, temp0);
+	GatherTexels(_tex, mips, pitch, x0, y1, temp1);
+
+	static const __m256i permuteMaskBase = _mm256_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1);
+
+	__m256i permuteMask = permuteMaskBase;
+	__m256i const two = _mm256_set1_epi32(2);
+
+	for (uint32_t i = 0; i < 4; ++i)
 	{
-		uint8_t const* pix = _tex.m_texels.Data() + (offsArr[i] + _tex.m_mipOffsets[mips[i]]); // todo: mip offset
-		o_colour[0 + i * 4] = pix[0] * recip255;
-		o_colour[1 + i * 4] = pix[1] * recip255;
-		o_colour[2 + i * 4] = pix[2] * recip255;
-		o_colour[3 + i * 4] = pix[3] * recip255;
+		__m256 const interpV_perm = _mm256_permutevar8x32_ps(v_interp, permuteMask);
+		permuteMask = _mm256_add_epi32(two, permuteMask);
+
+		__m256 const a = _mm256_load_ps(temp0 + i * 8);
+		__m256 const b = _mm256_load_ps(temp1 + i * 8);
+		//_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpV_perm, _mm256_sub_ps(b, a), a));
+		_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpV_perm, b,  _mm256_fnmadd_ps(interpV_perm, a, a)));
+
+	}
+
+	GatherTexels(_tex, mips, pitch, x1, y0, temp0);
+	GatherTexels(_tex, mips, pitch, x1, y1, temp1);
+
+	permuteMask = permuteMaskBase;
+
+	for (uint32_t i = 0; i < 4; ++i)
+	{
+		__m256 const interpV_perm = _mm256_permutevar8x32_ps(v_interp, permuteMask);
+		__m256 const interpU_perm = _mm256_permutevar8x32_ps(u_interp, permuteMask);
+		permuteMask = _mm256_add_epi32(two, permuteMask);
+
+		__m256 const a = _mm256_load_ps(temp0 + i * 8);
+		__m256 const b = _mm256_load_ps(temp1 + i * 8);
+		__m256 const right = _mm256_fmadd_ps(interpV_perm, _mm256_sub_ps(b, a), a);
+
+		__m256 const left = _mm256_load_ps(o_colour + i * 8);
+		
+		_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpU_perm, right, _mm256_fnmadd_ps(interpU_perm, left, left)));
+		//_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(_mm256_sub_ps(right, left), interpU_perm, left));
 	}
 }
 

@@ -46,15 +46,19 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 	}
 
 
+	volatile static bool DO_BILLINEAR = true;
 
-#if 0
-	for (uint32_t i = 0; i < 8; ++i)
+	if (!DO_BILLINEAR)
 	{
-		sr::Tex::SampleWrap_Slow(*tex, 0, u[i], v[i], &o_colour[i * 4]);
+		for (uint32_t i = 0; i < 8; ++i)
+		{
+			sr::Tex::SampleWrap_Slow(*tex, 0, u[i], v[i], &o_colour[i * 4]);
+		}
 	}
-#else
-	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
-#endif
+	else
+	{
+		sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
+	}
 }
 
 void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
@@ -118,7 +122,6 @@ int main(int argc, char** argv)
 	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 	//model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/sponza/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
