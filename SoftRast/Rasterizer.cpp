@@ -263,7 +263,7 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					continue;
 				}
 
-				uint32_t const numFragsToOutput = kt::Popcnt(mask8x8);
+				uint32_t const numFragsToOutput = uint32_t(kt::Popcnt(mask8x8));
 				o_buffer.ReserveFragments(numFragsToOutput);
 
 				o_buffer.m_interpolantsAllocSize += numFragsToOutput * _call.m_attributeBuffer.m_stride + 4; // 4 for derivs, make constant?

@@ -13,13 +13,10 @@ else()
 endif()
 
 
-if(CMAKE_CXX_COMPILER_D MATCHES "MSVC" OR CLANG_ON_WINDOWS)
-    add_compile_options(/arch:AVX2)
-	add_compile_options(/fp:fast)
-	add_compile_options(/Oi)
+if(MSVC OR CLANG_ON_WINDOWS)
+    add_compile_options(/arch:AVX2 /fp:fast /Oi)
 elseif((CMAKE_CXX_COMPILER_ID MATCHES "GNU") OR (CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
-    add_compile_options(-mavx2)
-	add_compile_options(-ffast-math)
+    add_compile_options(-mavx2 -ffast-math)
 endif()
 
 
