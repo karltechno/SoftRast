@@ -209,7 +209,7 @@ void RenderContext::EndFrame()
 	for (uint32_t i = 0; i < m_binner.m_numBinsX * m_binner.m_numBinsY * m_binner.m_numThreads; ++i)
 	{
 		// todo frame number dirty
-		m_binner.m_bins[i].m_numChunks = 0;
+		m_binner.m_bins[i].Reset();
 	}
 
 	struct BinTrisTaskData

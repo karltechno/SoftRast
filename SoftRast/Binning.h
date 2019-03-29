@@ -12,7 +12,7 @@ namespace sr
 
 struct DrawCall;
 
-static uint32_t const c_trisPerBinChunk = 128;
+static uint32_t const c_trisPerBinChunk = 64;
 static uint32_t const c_maxThreadBinChunks = 512;
 
 struct BinChunk
@@ -50,12 +50,17 @@ struct BinChunk
 	uint32_t m_attribsPerTri = 0;
 	uint32_t m_numTris = 0;
 
-	// Todo: we waste a lot of space like this, need to have multiple draw calls in one chunk.
+	// Todo: Should change the chunk behaviour so we don't have one draw call per chunk (lots of padding/wastage)
 	uint32_t m_drawCallIdx;
 };
 
 struct ThreadBin
 {
+	void Reset()
+	{
+		m_numChunks = 0;
+	}
+
 	BinChunk* m_binChunks[c_maxThreadBinChunks];
 
 	uint32_t m_numChunks = 0;

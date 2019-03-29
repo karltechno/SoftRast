@@ -13,18 +13,10 @@ struct FragmentStream
 
 struct FragmentBuffer
 {
-	enum Flags : uint16_t
-	{
-		None,
-		Full8x8Block 
-	};
-
 	struct Frag
 	{
-		uint16_t x : 7;
-		uint16_t y : 7;
-		uint16_t flags : 2;
-
+		uint8_t x;
+		uint8_t y ;
 		union 
 		{
 			struct  
@@ -36,9 +28,6 @@ struct FragmentBuffer
 		};
 
 	};
-
-	static_assert((1 << 7) >= Config::c_binHeight, "Cant fit height in 7 bits");
-	static_assert((1 << 7) >= Config::c_binWidth, "Cant fit width in 7 bits");
 
 	ThreadScratchAllocator* m_allocator = nullptr;
 
@@ -143,10 +132,6 @@ static uint64_t ComputeBlockMask8x8
 	{
 		edges[i] = _mm256_add_epi32(_edges.tileTopLeftEdge[i], _mm256_add_epi32(_mm256_mullo_epi32(yTileSimd, _edges.dx[i]), _mm256_mullo_epi32(xTileSimd, _edges.dy[i])));
 	}
-
-	// Todo: look at other coverage mask generation approaches. Eg LUT based.
-
-	// Manually unroll ?
 
 	__m256i const signBit = _mm256_set1_epi32(0x80000000);
 
@@ -282,7 +267,6 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 					FragmentBuffer::Frag& frag = o_buffer.m_fragments[o_buffer.m_numFragments++];
 					frag.x = bitX;
 					frag.y = bitY;
-					frag.flags = FragmentBuffer::Flags::None;
 					frag.triIdx = triIdx;
 					frag.chunkIdx = _chunkIdx;
 
