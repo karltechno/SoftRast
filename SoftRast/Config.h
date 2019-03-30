@@ -3,6 +3,8 @@
 
 #define SR_USE_REVERSE_Z (1)
 
+#define SR_DEBUG_SINGLE_THREADED (1)
+
 namespace sr
 {
 

@@ -22,13 +22,7 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 
 	tls_threadIndex = 0;
 
-	if (!_numWorkers)
-	{
-		return;
-	}
 	m_numWorkers = _numWorkers;
-
-	m_threads = new kt::Thread[_numWorkers];
 
 	// including main thread
 	m_allocators = new ThreadScratchAllocator[TotalThreadsIncludingMainThread()];
@@ -43,6 +37,13 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		KT_ASSERT(ptr);
 		alloc.Init(ptr, MEM_SIZE);
 	}
+
+	if (!_numWorkers)
+	{
+		return;
+	}
+
+	m_threads = new kt::Thread[_numWorkers];
 	
 	std::atomic<uint32_t> initCounter{ _numWorkers };
 	m_numWorkers = _numWorkers;

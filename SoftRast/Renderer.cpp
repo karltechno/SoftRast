@@ -151,7 +151,11 @@ DrawCall& DrawCall::SetMVP(kt::Mat4 const& _mvp)
 
 RenderContext::RenderContext()
 {
+#if !SR_DEBUG_SINGLE_THREADED
 	m_taskSystem.InitFromMainThread(kt::LogicalCoreCount() - 1);
+#else
+	m_taskSystem.InitFromMainThread(0);
+#endif
 
 	// Todo: frame buffer size hardcoded!!
 	m_binner.Init(m_taskSystem.TotalThreadsIncludingMainThread(), uint32_t(kt::AlignUp(Config::c_screenWidth, Config::c_binWidth)) / Config::c_binWidth, 
