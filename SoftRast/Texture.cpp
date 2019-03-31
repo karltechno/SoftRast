@@ -352,7 +352,7 @@ void SampleWrap
 
 	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather);
 
-	// pre swizzle interpolants (we are interpolating 2 colour channels at once).
+	// pre swizzle interpolants (we are interpolating 2 texels (4 color channels) at once).
 	// This way we only need to do cross-lane permute once and can do variable isolated-lane permute the rest of the time (less latency)
 	__m256 const v_interp_cross_swizzled = _mm256_permutevar8x32_ps(v_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
 	__m256 const u_interp_cross_swizzled = _mm256_permutevar8x32_ps(u_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
