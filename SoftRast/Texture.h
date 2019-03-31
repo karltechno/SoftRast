@@ -39,10 +39,6 @@ struct TextureData
 	uint32_t m_bytesPerPixel = 0;
 };
 
-void SampleClamp_Slow(TextureData const& _tex, uint32_t const _mipIdx, float const _u, float const _v, float o_colour[4]);
-
-void SampleWrap_Slow(TextureData const& _tex, uint32_t const _mipIdx, float const _u, float const _v, float o_colour[4]);
-
 void SampleWrap(TextureData const& _tex, __m256 _u, __m256 _v, __m256 dudx, __m256 dudy, __m256 dvdx, __m256 dvdy, float o_colour[4 * 8]);
 
 }

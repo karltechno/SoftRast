@@ -180,60 +180,6 @@ void CalcMipDims2D(uint32_t _x, uint32_t _y, uint32_t _level, uint32_t o_dims[2]
 	o_dims[1] = kt::Max<uint32_t>(1u, _y >> _level);
 }
 
-void SampleClamp_Slow(TextureData const& _tex, uint32_t const _mipIdx, float const _u, float const _v, float o_colour[4])
-{
-	uint32_t const mipClamped = kt::Min(_mipIdx, _tex.m_numMips);
-
-	uint32_t const width	= 1u << (kt::Min(_tex.m_widthLog2, mipClamped) - mipClamped);
-	uint32_t const height	= 1u << (kt::Min(_tex.m_heightLog2, mipClamped) - mipClamped);
-
-	uint32_t const pitch = width * _tex.m_bytesPerPixel;
-
-	uint32_t const clampU = uint32_t(kt::Clamp<int32_t>(int32_t(_u * width), 0, width - 1));
-	uint32_t const clampV = uint32_t(kt::Clamp<int32_t>(int32_t(_v * height), 0, height - 1));
-
-	uint32_t const offs = clampV * pitch + clampU * _tex.m_bytesPerPixel;
-	uint8_t const* pix = _tex.m_texels.Data() + (_tex.m_mipOffsets[mipClamped] + offs);
-	static const float recip255 = 1.0f / 255.0f;
-	o_colour[0] = pix[0] * recip255;
-	o_colour[1] = pix[1] * recip255;
-	o_colour[2] = pix[2] * recip255;
-	o_colour[3] = pix[3] * recip255;
-}
-
-void SampleWrap_Slow(TextureData const& _tex, uint32_t const _mipIdx, float const _u, float const _v, float o_colour[4])
-{
-	uint32_t const mipClamped = kt::Min(_mipIdx, _tex.m_numMips);
-
-	uint32_t const width = 1u << (_tex.m_widthLog2 - mipClamped);
-	uint32_t const height = 1u << (_tex.m_heightLog2 - mipClamped);
-
-	uint32_t const pitch = width * _tex.m_bytesPerPixel;
-
-	float const uSign = _u < 0.0f ? -1.0f : 1.0f;
-	float const vSign = _v < 0.0f ? -1.0f : 1.0f;
-
-	float const absU = uSign * _u;
-	float const absV = vSign * _v;
-
-	float const fracU = absU - int32_t(absU);
-	float const fracV = absV - int32_t(absV);
-
-	float const uWrap = uSign < 0.0f ? (1.0f - fracU) : fracU;
-	float const vWrap = vSign < 0.0f ? (1.0f - fracV) : fracV;
-
-	uint32_t const clampU = uint32_t(kt::Clamp<int32_t>(int32_t(uWrap * width), 0, width - 1));
-	uint32_t const clampV = uint32_t(kt::Clamp<int32_t>(int32_t(vWrap * height), 0, height - 1));
-
-	uint32_t const offs = clampV * pitch + clampU * _tex.m_bytesPerPixel;
-	uint8_t const* pix = _tex.m_texels.Data() + (_tex.m_mipOffsets[mipClamped] + offs);
-	static const float recip255 = 1.0f / 255.0f;
-	o_colour[0] = pix[0] * recip255;
-	o_colour[1] = pix[1] * recip255;
-	o_colour[2] = pix[2] * recip255;
-	o_colour[3] = pix[3] * recip255;
-}
-
 __m256i CalcMipLevels(TextureData const& _tex, __m256 _dudx, __m256 _dudy, __m256 _dvdx, __m256 _dvdy)
 {
 	__m256 const height = _mm256_set1_ps(float(1u << _tex.m_heightLog2));
