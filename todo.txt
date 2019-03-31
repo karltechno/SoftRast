@@ -1,21 +1,18 @@
+- Front end
+    - Vectorize binning/triangle setup
+
 - Rasterizer
     - Guard Band clipping - otherwise we need to clip every triangle intersecting l/r/t/b planes.
-    - Optimize triangle/pixel setup variables - a bunch of redundant work currently
 
 - Overall pipeline
-    - Slowly transition testing/learning rasterizer code into a more unified pipeline
-    - Support pixel/vertex shading
-    - Multithreading
+    - Support vertex shading (or atleast converting integer attributes to floating point)
     - Expose some control of renderer/rasterizer state.
         - Blending
         - Scissor
         - Depth test
-    - Tiled framebuffer/depth buffer
     - HI-Z
-    - Tiled textures (investigate Z-order/Morton as a stretch?)
 
 - Shading 
-    - Simple lambert/specular shading pipeline
+    - Simple lambert/specular shading pipeline (blinn-phong?)
     - Lighting (spot, point, directional)
     - Shadow mapping?
-    - PBR (eg GGX)
