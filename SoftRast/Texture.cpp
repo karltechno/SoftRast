@@ -29,6 +29,32 @@ namespace sr
 namespace Tex
 {
 
+constexpr uint32_t c_texTileSizeLog2 = 5;
+constexpr uint32_t c_texTileSize = 1 << c_texTileSizeLog2;
+constexpr uint32_t c_texTileMask = c_texTileSize - 1;
+
+static void TileTexture(uint8_t const* _src, uint8_t* _dest, uint32_t const dimX_noPad, uint32_t const dimY_noPad)
+{
+	uint32_t const mipTileWidth = uint32_t(kt::AlignUp(dimX_noPad, c_texTileSize)) >> c_texTileSizeLog2;
+
+	for (uint32_t yy = 0; yy < dimY_noPad; ++yy)
+	{
+		for (uint32_t xx = 0; xx < dimX_noPad; ++xx)
+		{
+			uint32_t const linearOffs = yy * dimX_noPad + xx;
+
+			uint32_t const tileX = xx >> c_texTileSizeLog2;
+			uint32_t const tileY = yy >> c_texTileSizeLog2;
+
+			uint32_t const inTileAddressX = xx & c_texTileMask;
+			uint32_t const inTileAddressY = yy & c_texTileMask;
+
+			uint32_t const tiledOffs = (tileY * mipTileWidth + tileX) * (c_texTileSize * c_texTileSize) + inTileAddressY * c_texTileSize + inTileAddressX;
+			KT_ASSERT(tiledOffs < (kt::AlignUp(dimX_noPad, c_texTileSize) * kt::AlignUp(dimY_noPad, c_texTileSize)));
+			memcpy(_dest + tiledOffs * 4, _src + linearOffs * 4, 4);
+		}
+	}
+}
 
 void TextureData::CreateFromFile(char const* _file)
 {
@@ -51,6 +77,8 @@ void TextureData::CreateFromFile(char const* _file)
 
 	KT_ASSERT(m_heightLog2 < Config::c_maxTexDimLog2);
 	KT_ASSERT(m_widthLog2 < Config::c_maxTexDimLog2);
+	KT_ASSERT((x % c_texTileSize) == 0);
+	KT_ASSERT((y % c_texTileSize) == 0); // TODO: Pad if this isn't true (but will be with 2^x x>=5)
 	
 	m_bytesPerPixel = req_comp;
 
@@ -65,28 +93,44 @@ void TextureData::CreateFromFile(char const* _file)
 		uint32_t m_dims[2];
 	};
 
-	uint32_t curMipDataOffset = x * y * req_comp;
+	uint32_t curMipDataOffset = 0;
 
-	MipInfo* mipInfos = (MipInfo*)KT_ALLOCA(sizeof(MipInfo) * (fullMipChainLen - 1));
-	m_mipOffsets[0] = 0;
+	MipInfo* mipInfos = (MipInfo*)KT_ALLOCA(sizeof(MipInfo) * fullMipChainLen);
 
-	for (uint32_t mipIdx = 0; mipIdx < fullMipChainLen - 1; ++mipIdx)
+	for (uint32_t mipIdx = 0; mipIdx < fullMipChainLen; ++mipIdx)
 	{
-		CalcMipDims2D(uint32_t(x), uint32_t(y), mipIdx + 1, mipInfos[mipIdx].m_dims);
+		CalcMipDims2D(uint32_t(x), uint32_t(y), mipIdx, mipInfos[mipIdx].m_dims);
 		mipInfos[mipIdx].m_offs = curMipDataOffset;
-		m_mipOffsets[mipIdx + 1] = curMipDataOffset;
-		curMipDataOffset += mipInfos[mipIdx].m_dims[0] * mipInfos[mipIdx].m_dims[1] * req_comp;
+		m_mipOffsets[mipIdx] = curMipDataOffset;
+
+		// Align the offset to account for tiling
+		uint32_t const mipDimX_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[0], c_texTileSize));
+		uint32_t const mipDimY_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[1], c_texTileSize));
+
+		curMipDataOffset += mipDimX_tilePad * mipDimY_tilePad * req_comp;
 	}
+
 
 	m_texels.Resize(curMipDataOffset);
 	uint8_t* texWritePointer = m_texels.Data();
 
-	memcpy(texWritePointer, srcImageData, req_comp * x * y);
+	// tile mip 0
+	TileTexture(srcImageData, texWritePointer, mipInfos[0].m_dims[0], mipInfos[0].m_dims[1]);
 
-	for (uint32_t mipIdx = 0; mipIdx < fullMipChainLen - 1; ++mipIdx)
+	uint32_t const largestMipSize = x * y * 4;
+	uint8_t* tempResizeBuff = (uint8_t*)kt::Malloc(largestMipSize);
+	KT_SCOPE_EXIT(kt::Free(tempResizeBuff));
+
+	for (uint32_t mipIdx = 1; mipIdx < fullMipChainLen; ++mipIdx)
 	{
 		MipInfo const& mipInfo = mipInfos[mipIdx];
-		stbir_resize_uint8(srcImageData, x, y, 0, texWritePointer + mipInfo.m_offs, mipInfo.m_dims[0], mipInfo.m_dims[1], 0, req_comp);
+		uint8_t* mipPtr = texWritePointer + mipInfo.m_offs;
+
+		uint32_t const mipDimX = mipInfo.m_dims[0];
+		uint32_t const mipDimY = mipInfo.m_dims[1];
+
+		stbir_resize_uint8(srcImageData, x, y, 0, tempResizeBuff, mipDimX, mipDimY, 0, req_comp);
+		TileTexture(tempResizeBuff, mipPtr, mipDimX, mipDimY);
 	}
 }
 
@@ -184,9 +228,35 @@ static __m256i BoundCoordsWrap(__m256i _coord, __m256i _bound)
 	return _mm256_and_si256(_coord, _mm256_sub_epi32(_bound, one));
 }
 
-static void GatherTexels(TextureData const& _tex, uint32_t _mips[8], __m256i _pitch, __m256i _x, __m256i _y, float o_texels[8 * 4])
+static void GatherTexels(TextureData const& _tex, uint32_t _mips[8], __m256i _mipWidth, __m256i _x, __m256i _y, float o_texels[8 * 4])
 {
-	__m256i const offs = _mm256_add_epi32(_mm256_mullo_epi32(_pitch, _y), _mm256_mullo_epi32(_x, _mm256_set1_epi32(_tex.m_bytesPerPixel)));
+#if 0
+	uint32_t const tileX = xx >> c_texTileSizeLog2;
+	uint32_t const tileY = yy >> c_texTileSizeLog2;
+
+	uint32_t const inTileAddressX = xx & c_texTileMask;
+	uint32_t const inTileAddressY = yy & c_texTileMask;
+
+	uint32_t const tiledOffs = (tileY * mipTileWidth + tileX) * (c_texTileSize * c_texTileSize) + inTileAddressY * c_texTileSize + inTileAddressX;
+#endif
+	__m256i const tileX = _mm256_srli_epi32(_x, c_texTileSizeLog2);
+	__m256i const tileY = _mm256_srli_epi32(_y, c_texTileSizeLog2);
+
+	__m256i const c_texTileMaskAvx = _mm256_set1_epi32(c_texTileMask);
+
+	__m256i const inTileAddressX = _mm256_and_si256(_x, c_texTileMaskAvx);
+	__m256i const inTileAddressY = _mm256_and_si256(_y, c_texTileMaskAvx);
+
+
+	// TODO: Broken for non pow2 textures (we assert not supporting those though!)
+	__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
+	__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
+
+	__m256i offs = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY, mipTileWidth), tileX));
+	offs = _mm256_add_epi32(inTileAddressX, _mm256_add_epi32(offs, _mm256_mullo_epi32(inTileAddressY, texTileSize)));
+	
+	// *4 for bpp (todo: specify somewhere).
+	offs = _mm256_slli_epi32(offs, 2);
 
 	KT_ALIGNAS(32) uint32_t offsArr[8];
 
@@ -195,7 +265,8 @@ static void GatherTexels(TextureData const& _tex, uint32_t _mips[8], __m256i _pi
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		uint8_t const* pix = _tex.m_texels.Data() + (offsArr[i] + _tex.m_mipOffsets[_mips[i]]);
+		uint32_t const finalOffs = offsArr[i] + _tex.m_mipOffsets[_mips[i]];
+		uint8_t const* pix = _tex.m_texels.Data() + finalOffs;
 		o_texels[0 + i * 4] = pix[0] * recip255;
 		o_texels[1 + i * 4] = pix[1] * recip255;
 		o_texels[2 + i * 4] = pix[2] * recip255;
@@ -224,8 +295,6 @@ void SampleWrap
 
 	__m256i const width = _mm256_sllv_epi32(one, _mm256_sub_epi32(widthLog2, _mm256_min_epi32(widthLog2, mipFloor)));
 	__m256i const height = _mm256_sllv_epi32(one, _mm256_sub_epi32(heightLog2, _mm256_min_epi32(heightLog2, mipFloor)));
-
-	__m256i const pitch = _mm256_mullo_epi32(width, _mm256_set1_epi32(_tex.m_bytesPerPixel)); // todo: always four?
 
 	__m256 const signBit = SR_AVX_LOAD_CONST_FLOAT(simdutil::c_avxSignBit);
 
@@ -265,8 +334,8 @@ void SampleWrap
 	KT_ALIGNAS(32) float temp0[8 * 4];
 	KT_ALIGNAS(32) float temp1[8 * 4];
 
-	GatherTexels(_tex, mips, pitch, x0, y0, temp0);
-	GatherTexels(_tex, mips, pitch, x0, y1, temp1);
+	GatherTexels(_tex, mips, width, x0, y0, temp0);
+	GatherTexels(_tex, mips, width, x0, y1, temp1);
 
 	static const __m256i permuteMaskBase = _mm256_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1);
 
@@ -285,8 +354,8 @@ void SampleWrap
 
 	}
 
-	GatherTexels(_tex, mips, pitch, x1, y0, temp0);
-	GatherTexels(_tex, mips, pitch, x1, y1, temp1);
+	GatherTexels(_tex, mips, width, x1, y0, temp0);
+	GatherTexels(_tex, mips, width, x1, y1, temp1);
 
 	permuteMask = permuteMaskBase;
 
