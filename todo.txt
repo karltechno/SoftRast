@@ -1,3 +1,5 @@
+Comment the code :)
+
 - Front end
     - Vectorize binning/triangle setup
     - Guard Band clipping - otherwise we need to clip every triangle intersecting l/r/t/b planes.
