@@ -72,6 +72,8 @@ static void TileTexture(uint8_t const* _src, uint8_t* _dest, uint32_t const dimX
 {
 	uint32_t const mipTileWidth = uint32_t(kt::AlignUp(dimX_noPad, c_texTileSize)) >> c_texTileSizeLog2;
 
+	// Naive tile+swizzling of texture. 
+	// Go over the texture in linear order, find the tiled offset and morton code the inner tile coordinates.
 	for (uint32_t yy = 0; yy < dimY_noPad; ++yy)
 	{
 		for (uint32_t xx = 0; xx < dimX_noPad; ++xx)
@@ -192,13 +194,15 @@ __m256i CalcMipLevels(TextureData const& _tex, __m256 _dudx, __m256 _dudy, __m25
 	__m256 const dvdx_tex = _mm256_mul_ps(_dvdx, width);
 	__m256 const dvdy_tex = _mm256_mul_ps(_dvdy, height);
 
-	// inner product
+	// Work out the texture coordinate with the largest derivative.
+	// -> max(dot(dudx, dudy), dot(dvdx, dvdy))
 	__m256 const du_dot2 = _mm256_fmadd_ps(dudx_tex, dudx_tex, _mm256_mul_ps(dudy_tex, dudy_tex));
 	__m256 const dv_dot2 = _mm256_fmadd_ps(dvdx_tex, dvdx_tex, _mm256_mul_ps(dvdy_tex, dvdy_tex));
 
 	// Todo: with proper log2 we can use identity log2(x^(1/2)) == 0.5 * log2(x) and remove sqrt.
 	__m256 const maxCoord = _mm256_sqrt_ps(_mm256_max_ps(du_dot2, dv_dot2));
 
+	// Approximate (floor) log2 by extracting exponent.
 	return _mm256_min_epi32(_mm256_set1_epi32(_tex.m_numMips - 1), _mm256_max_epi32(_mm256_setzero_si256(), simdutil::ExtractExponent(maxCoord)));
 }
 
@@ -225,6 +229,7 @@ static void GatherQuads
 	float o_x1y1[8 * 4]
 )
 {
+	// Compute the tile offsets.
 	__m256i const tileX0 = _mm256_srli_epi32(_x0, c_texTileSizeLog2);
 	__m256i const tileY0 = _mm256_srli_epi32(_y0, c_texTileSizeLog2);
 	__m256i const tileX1 = _mm256_srli_epi32(_x1, c_texTileSizeLog2);
@@ -232,6 +237,7 @@ static void GatherQuads
 
 	__m256i const c_texTileMaskAvx = _mm256_set1_epi32(c_texTileMask);
 
+	// Compute the inner-tile coordinates.
 	__m256i const inTileAddressX0 = _mm256_and_si256(_x0, c_texTileMaskAvx);
 	__m256i const inTileAddressY0 = _mm256_and_si256(_y0, c_texTileMaskAvx);
 	__m256i const inTileAddressX1 = _mm256_and_si256(_x1, c_texTileMaskAvx);
@@ -241,7 +247,7 @@ static void GatherQuads
 	__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
 	__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
 
-	// Tile offset
+	// Compute the linear offset to the start of each tile (not including bytes per pixel).
 	__m256i const offs_x0y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0));
 	__m256i const offs_x1y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1));
 	__m256i const offs_x0y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0));
@@ -252,7 +258,8 @@ static void GatherQuads
 	KT_ALIGNAS(32) uint32_t morton_x1y1[8];
 	KT_ALIGNAS(32) uint32_t morton_x0y1[8];
 
-	// (Morton + tile offset) * bytes_per_pixel
+	// Add offset to morton encoded inner tile coordinates, multiply by 4 for bytes per pixel.
+	// This is the final pixel offset.
 	_mm256_store_si256((__m256i*)morton_x0y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y0, MortonEncode_AVX(inTileAddressX0, inTileAddressY0)), 2));
 	_mm256_store_si256((__m256i*)morton_x1y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y0, MortonEncode_AVX(inTileAddressX1, inTileAddressY0)), 2));
 	_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
@@ -262,7 +269,7 @@ static void GatherQuads
 	for (uint32_t i = 0; i < 8; ++i)
 	{
 		uint8_t const* mipPtr = _tex.m_texels.Data() + _tex.m_mipOffsets[_mips[i]];
-
+		// Convert each pixel in the quad and store.
 		{
 			uint8_t const* pix_x0y0 = mipPtr + morton_x0y0[i];
 			__m128i const x0y0 = _mm_cvtsi32_si128(*(uint32_t*)pix_x0y0);
@@ -308,10 +315,13 @@ void SampleWrap
 	__m256i const widthLog2 = _mm256_set1_epi32(_tex.m_widthLog2);
 	__m256i const heightLog2 = _mm256_set1_epi32(_tex.m_heightLog2);
 
+	// Calculate mip widths.
 	__m256i const width = _mm256_sllv_epi32(one, _mm256_sub_epi32(widthLog2, _mm256_min_epi32(widthLog2, mipFloor)));
 	__m256i const height = _mm256_sllv_epi32(one, _mm256_sub_epi32(heightLog2, _mm256_min_epi32(heightLog2, mipFloor)));
 
 	__m256 const signBit = SR_AVX_LOAD_CONST_FLOAT(simdutil::c_avxSignBit);
+
+	// Perform wrapping of uv coordinates and account for sign.
 
 	__m256 const uSign = _mm256_and_ps(signBit, _u);
 	__m256 const vSign = _mm256_and_ps(signBit, _v);
@@ -365,6 +375,8 @@ void SampleWrap
 		__m256 const interpV_perm = _mm256_permutevar_ps(v_interp_cross_swizzled, permMask);
 		__m256 const interpU_perm = _mm256_permutevar_ps(u_interp_cross_swizzled, permMask);
 		permMask = _mm256_add_epi32(_mm256_set1_epi32(1), permMask);
+
+		// Bilinear interpolate.
 
 		__m256 const x0y0 = _mm256_load_ps(x0y0_gather + i * 8);
 		__m256 const x0y1 = _mm256_load_ps(x0y1_gather + i * 8);
