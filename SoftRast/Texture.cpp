@@ -1,4 +1,5 @@
 #include <string.h>
+#include <intrin.h>
 
 #include <kt/Memory.h>
 #include <kt/Logging.h>
@@ -29,6 +30,13 @@ namespace sr
 namespace Tex
 {
 
+static uint32_t MortonEncode(uint32_t _x, uint32_t _y)
+{
+	constexpr uint32_t pdep_x_mask = 0x55555555; // 0b010101 ...
+	constexpr uint32_t pdep_y_mask = 0xAAAAAAAA; // 0b101010 ...
+	return _pdep_u32(_x, pdep_x_mask) | _pdep_u32(_y, pdep_y_mask);
+}
+
 constexpr uint32_t c_texTileSizeLog2 = 5;
 constexpr uint32_t c_texTileSize = 1 << c_texTileSizeLog2;
 constexpr uint32_t c_texTileMask = c_texTileSize - 1;
@@ -49,8 +57,9 @@ static void TileTexture(uint8_t const* _src, uint8_t* _dest, uint32_t const dimX
 			uint32_t const inTileAddressX = xx & c_texTileMask;
 			uint32_t const inTileAddressY = yy & c_texTileMask;
 
-			uint32_t const tiledOffs = (tileY * mipTileWidth + tileX) * (c_texTileSize * c_texTileSize) + inTileAddressY * c_texTileSize + inTileAddressX;
-			KT_ASSERT(tiledOffs < (kt::AlignUp(dimX_noPad, c_texTileSize) * kt::AlignUp(dimY_noPad, c_texTileSize)));
+			uint32_t const morton = MortonEncode(inTileAddressX, inTileAddressY);
+
+			uint32_t const tiledOffs = (tileY * mipTileWidth + tileX) * (c_texTileSize * c_texTileSize) + morton;
 			memcpy(_dest + tiledOffs * 4, _src + linearOffs * 4, 4);
 		}
 	}
@@ -228,49 +237,83 @@ static __m256i BoundCoordsWrap(__m256i _coord, __m256i _bound)
 	return _mm256_and_si256(_coord, _mm256_sub_epi32(_bound, one));
 }
 
-static void GatherTexels(TextureData const& _tex, uint32_t _mips[8], __m256i _mipWidth, __m256i _x, __m256i _y, float o_texels[8 * 4])
+static void GatherQuads
+(
+	TextureData const& _tex, 
+	uint32_t _mips[8], 
+	__m256i _mipWidth, 
+	__m256i _x0, 
+	__m256i _y0, 
+	__m256i _x1,
+	__m256i _y1,
+	float o_x0y0[8 * 4],
+	float o_x1y0[8 * 4],
+	float o_x0y1[8 * 4],
+	float o_x1y1[8 * 4]
+)
 {
-#if 0
-	uint32_t const tileX = xx >> c_texTileSizeLog2;
-	uint32_t const tileY = yy >> c_texTileSizeLog2;
-
-	uint32_t const inTileAddressX = xx & c_texTileMask;
-	uint32_t const inTileAddressY = yy & c_texTileMask;
-
-	uint32_t const tiledOffs = (tileY * mipTileWidth + tileX) * (c_texTileSize * c_texTileSize) + inTileAddressY * c_texTileSize + inTileAddressX;
-#endif
-	__m256i const tileX = _mm256_srli_epi32(_x, c_texTileSizeLog2);
-	__m256i const tileY = _mm256_srli_epi32(_y, c_texTileSizeLog2);
+	__m256i const tileX0 = _mm256_srli_epi32(_x0, c_texTileSizeLog2);
+	__m256i const tileY0 = _mm256_srli_epi32(_y0, c_texTileSizeLog2);
+	__m256i const tileX1 = _mm256_srli_epi32(_x1, c_texTileSizeLog2);
+	__m256i const tileY1 = _mm256_srli_epi32(_y1, c_texTileSizeLog2);
 
 	__m256i const c_texTileMaskAvx = _mm256_set1_epi32(c_texTileMask);
 
-	__m256i const inTileAddressX = _mm256_and_si256(_x, c_texTileMaskAvx);
-	__m256i const inTileAddressY = _mm256_and_si256(_y, c_texTileMaskAvx);
-
+	__m256i const inTileAddressX0 = _mm256_and_si256(_x0, c_texTileMaskAvx);
+	__m256i const inTileAddressY0 = _mm256_and_si256(_y0, c_texTileMaskAvx);
+	__m256i const inTileAddressX1 = _mm256_and_si256(_x1, c_texTileMaskAvx);
+	__m256i const inTileAddressY1 = _mm256_and_si256(_y1, c_texTileMaskAvx);
 
 	// TODO: Broken for non pow2 textures (we assert not supporting those though!)
 	__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
 	__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
 
-	__m256i offs = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY, mipTileWidth), tileX));
-	offs = _mm256_add_epi32(inTileAddressX, _mm256_add_epi32(offs, _mm256_mullo_epi32(inTileAddressY, texTileSize)));
-	
-	// *4 for bpp (todo: specify somewhere).
-	offs = _mm256_slli_epi32(offs, 2);
+	KT_ALIGNAS(32) uint32_t offs_x0y0[8];
+	KT_ALIGNAS(32) uint32_t offs_x1y0[8];
+	KT_ALIGNAS(32) uint32_t offs_x0y1[8];
+	KT_ALIGNAS(32) uint32_t offs_x1y1[8];
 
-	KT_ALIGNAS(32) uint32_t offsArr[8];
+	_mm256_store_si256((__m256i*)offs_x0y0, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0)));
+	_mm256_store_si256((__m256i*)offs_x1y0, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1)));
+	_mm256_store_si256((__m256i*)offs_x0y1, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0)));
+	_mm256_store_si256((__m256i*)offs_x1y1, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX1)));
 
-	_mm256_store_si256((__m256i*)offsArr, offs);
-	static const float recip255 = 1.0f / 255.0f;
+	KT_ALIGNAS(32) uint32_t linear_x0[8];
+	KT_ALIGNAS(32) uint32_t linear_y0[8];
+	KT_ALIGNAS(32) uint32_t linear_x1[8];
+	KT_ALIGNAS(32) uint32_t linear_y1[8];
+	_mm256_store_si256((__m256i*)linear_x0, inTileAddressX0);
+	_mm256_store_si256((__m256i*)linear_y0, inTileAddressY0);
+	_mm256_store_si256((__m256i*)linear_x1, inTileAddressX1);
+	_mm256_store_si256((__m256i*)linear_y1, inTileAddressY1);
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		uint32_t const finalOffs = offsArr[i] + _tex.m_mipOffsets[_mips[i]];
-		uint8_t const* pix = _tex.m_texels.Data() + finalOffs;
-		o_texels[0 + i * 4] = pix[0] * recip255;
-		o_texels[1 + i * 4] = pix[1] * recip255;
-		o_texels[2 + i * 4] = pix[2] * recip255;
-		o_texels[3 + i * 4] = pix[3] * recip255;
+		uint8_t const* mipPtr = _tex.m_texels.Data() + _tex.m_mipOffsets[_mips[i]];
+
+		{
+			uint8_t const* pix_x0y0 = mipPtr + 4 * (offs_x0y0[i] + MortonEncode(linear_x0[i], linear_y0[i]));
+			__m128i const x0y0 = _mm_set1_epi32(*(uint32_t*)pix_x0y0);
+			_mm_storeu_ps(o_x0y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y0))));
+		}
+
+		{
+			uint8_t const* pix_x1y0 = mipPtr + 4 * (offs_x1y0[i] + MortonEncode(linear_x1[i], linear_y0[i]));
+			__m128i const x1y0 = _mm_set1_epi32(*(uint32_t*)pix_x1y0);
+			_mm_storeu_ps(o_x1y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y0))));
+		}
+
+		{
+			uint8_t const* pix_x1y1 = mipPtr + 4 * (offs_x1y1[i] + MortonEncode(linear_x1[i], linear_y1[i]));
+			__m128i const x1y1 = _mm_set1_epi32(*(uint32_t*)pix_x1y1);
+			_mm_storeu_ps(o_x1y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y1))));
+		}
+
+		{
+			uint8_t const* pix_x0y1 = mipPtr + 4 * (offs_x0y1[i] + MortonEncode(linear_x0[i], linear_y1[i]));
+			__m128i const x0y1 = _mm_set1_epi32(*(uint32_t*)pix_x0y1);
+			_mm_storeu_ps(o_x0y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y1))));
+		}
 	}
 }
 
@@ -331,11 +374,12 @@ void SampleWrap
 	KT_ALIGNAS(32) uint32_t mips[8];
 	_mm256_store_si256((__m256i*)mips, mipFloor);
 
-	KT_ALIGNAS(32) float temp0[8 * 4];
-	KT_ALIGNAS(32) float temp1[8 * 4];
+	KT_ALIGNAS(32) float x0y0_gather[8 * 4];
+	KT_ALIGNAS(32) float x0y1_gather[8 * 4];
+	KT_ALIGNAS(32) float x1y0_gather[8 * 4];
+	KT_ALIGNAS(32) float x1y1_gather[8 * 4];
 
-	GatherTexels(_tex, mips, width, x0, y0, temp0);
-	GatherTexels(_tex, mips, width, x0, y1, temp1);
+	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather);
 
 	static const __m256i permuteMaskBase = _mm256_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1);
 
@@ -345,34 +389,21 @@ void SampleWrap
 	for (uint32_t i = 0; i < 4; ++i)
 	{
 		__m256 const interpV_perm = _mm256_permutevar8x32_ps(v_interp, permuteMask);
-		permuteMask = _mm256_add_epi32(two, permuteMask);
-
-		__m256 const a = _mm256_load_ps(temp0 + i * 8);
-		__m256 const b = _mm256_load_ps(temp1 + i * 8);
-		//_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpV_perm, _mm256_sub_ps(b, a), a));
-		_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpV_perm, b,  _mm256_fnmadd_ps(interpV_perm, a, a)));
-
-	}
-
-	GatherTexels(_tex, mips, width, x1, y0, temp0);
-	GatherTexels(_tex, mips, width, x1, y1, temp1);
-
-	permuteMask = permuteMaskBase;
-
-	for (uint32_t i = 0; i < 4; ++i)
-	{
-		__m256 const interpV_perm = _mm256_permutevar8x32_ps(v_interp, permuteMask);
 		__m256 const interpU_perm = _mm256_permutevar8x32_ps(u_interp, permuteMask);
+
 		permuteMask = _mm256_add_epi32(two, permuteMask);
 
-		__m256 const a = _mm256_load_ps(temp0 + i * 8);
-		__m256 const b = _mm256_load_ps(temp1 + i * 8);
-		__m256 const right = _mm256_fmadd_ps(interpV_perm, _mm256_sub_ps(b, a), a);
+		__m256 const x0y0 = _mm256_load_ps(x0y0_gather + i * 8);
+		__m256 const x0y1 = _mm256_load_ps(x0y1_gather + i * 8);
 
-		__m256 const left = _mm256_load_ps(o_colour + i * 8);
-		
+		__m256 const left = _mm256_fmadd_ps(interpV_perm, x0y1, _mm256_fnmadd_ps(interpV_perm, x0y0, x0y0));
+
+		__m256 const x1y0 = _mm256_load_ps(x1y0_gather + i * 8);
+		__m256 const x1y1 = _mm256_load_ps(x1y1_gather + i * 8);
+
+		__m256 const right = _mm256_fmadd_ps(interpV_perm, x1y1, _mm256_fnmadd_ps(interpV_perm, x1y0, x1y0));
+
 		_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpU_perm, right, _mm256_fnmadd_ps(interpU_perm, left, left)));
-		//_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(_mm256_sub_ps(right, left), interpU_perm, left));
 	}
 }
 
