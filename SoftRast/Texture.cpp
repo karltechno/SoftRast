@@ -406,17 +406,18 @@ void SampleWrap
 
 	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather);
 
-	static const __m256i permuteMaskBase = _mm256_setr_epi32(0, 0, 0, 0, 1, 1, 1, 1);
+	// pre swizzle interpolants (we are interpolating 2 colour channels at once).
+	// This way we only need to do cross-lane permute once and can do variable isolated-lane permute the rest of the time (less latency)
+	__m256 const v_interp_cross_swizzled = _mm256_permutevar8x32_ps(v_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
+	__m256 const u_interp_cross_swizzled = _mm256_permutevar8x32_ps(u_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
 
-	__m256i permuteMask = permuteMaskBase;
-	__m256i const two = _mm256_set1_epi32(2);
+	__m256i permMask = _mm256_setzero_si256();
 
 	for (uint32_t i = 0; i < 4; ++i)
 	{
-		__m256 const interpV_perm = _mm256_permutevar8x32_ps(v_interp, permuteMask);
-		__m256 const interpU_perm = _mm256_permutevar8x32_ps(u_interp, permuteMask);
-
-		permuteMask = _mm256_add_epi32(two, permuteMask);
+		__m256 const interpV_perm = _mm256_permutevar_ps(v_interp_cross_swizzled, permMask);
+		__m256 const interpU_perm = _mm256_permutevar_ps(u_interp_cross_swizzled, permMask);
+		permMask = _mm256_add_epi32(_mm256_set1_epi32(1), permMask);
 
 		__m256 const x0y0 = _mm256_load_ps(x0y0_gather + i * 8);
 		__m256 const x0y1 = _mm256_load_ps(x0y1_gather + i * 8);
