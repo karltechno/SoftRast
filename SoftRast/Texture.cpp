@@ -37,6 +37,32 @@ static uint32_t MortonEncode(uint32_t _x, uint32_t _y)
 	return _pdep_u32(_x, pdep_x_mask) | _pdep_u32(_y, pdep_y_mask);
 }
 
+// https://lemire.me/blog/2018/01/09/how-fast-can-you-bit-interleave-32-bit-integers-simd-edition/
+
+__m256i interleave_uint8_with_zeros_avx_lut(__m256i word)
+{
+	const __m256i m = _mm256_set_epi8(85, 84, 81, 80, 69, 68,
+									  65, 64, 21, 20, 17, 16, 5, 4, 1, 0, 85, 84,
+									  81, 80, 69, 68, 65, 64, 21, 20, 17, 16, 5,
+									  4, 1, 0);
+	__m256i lownibbles =
+		_mm256_shuffle_epi8(m, _mm256_and_si256(word,
+												_mm256_set1_epi8(0xf)));
+	__m256i highnibbles = _mm256_and_si256(word,
+										   _mm256_set1_epi8(0xf0));
+	highnibbles = _mm256_srli_epi16(highnibbles, 4);
+	highnibbles = _mm256_shuffle_epi8(m, highnibbles);
+	highnibbles = _mm256_slli_epi16(highnibbles, 8);
+	return _mm256_or_si256(lownibbles, highnibbles);
+}
+
+static __m256i MortonEncode_AVX(__m256i _x, __m256i _y)
+{
+ 	__m256i const interleaved_x = interleave_uint8_with_zeros_avx_lut(_x);
+	__m256i const interleaved_y = interleave_uint8_with_zeros_avx_lut(_y);
+	return _mm256_or_si256(interleaved_x, _mm256_slli_epi32(interleaved_y, 1));
+}
+
 constexpr uint32_t c_texTileSizeLog2 = 5;
 constexpr uint32_t c_texTileSize = 1 << c_texTileSizeLog2;
 constexpr uint32_t c_texTileMask = c_texTileSize - 1;
@@ -268,49 +294,48 @@ static void GatherQuads
 	__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
 	__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
 
-	KT_ALIGNAS(32) uint32_t offs_x0y0[8];
-	KT_ALIGNAS(32) uint32_t offs_x1y0[8];
-	KT_ALIGNAS(32) uint32_t offs_x0y1[8];
-	KT_ALIGNAS(32) uint32_t offs_x1y1[8];
+	// Tile offset
+	__m256i const offs_x0y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0));
+	__m256i const offs_x1y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1));
+	__m256i const offs_x0y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0));
+	__m256i const offs_x1y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX1));
 
-	_mm256_store_si256((__m256i*)offs_x0y0, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0)));
-	_mm256_store_si256((__m256i*)offs_x1y0, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1)));
-	_mm256_store_si256((__m256i*)offs_x0y1, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0)));
-	_mm256_store_si256((__m256i*)offs_x1y1, _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX1)));
+	KT_ALIGNAS(32) uint32_t morton_x0y0[8];
+	KT_ALIGNAS(32) uint32_t morton_x1y0[8];
+	KT_ALIGNAS(32) uint32_t morton_x1y1[8];
+	KT_ALIGNAS(32) uint32_t morton_x0y1[8];
 
-	KT_ALIGNAS(32) uint32_t linear_x0[8];
-	KT_ALIGNAS(32) uint32_t linear_y0[8];
-	KT_ALIGNAS(32) uint32_t linear_x1[8];
-	KT_ALIGNAS(32) uint32_t linear_y1[8];
-	_mm256_store_si256((__m256i*)linear_x0, inTileAddressX0);
-	_mm256_store_si256((__m256i*)linear_y0, inTileAddressY0);
-	_mm256_store_si256((__m256i*)linear_x1, inTileAddressX1);
-	_mm256_store_si256((__m256i*)linear_y1, inTileAddressY1);
+	// (Morton + tile offset) * bytes_per_pixel
+	_mm256_store_si256((__m256i*)morton_x0y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y0, MortonEncode_AVX(inTileAddressX0, inTileAddressY0)), 2));
+	_mm256_store_si256((__m256i*)morton_x1y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y0, MortonEncode_AVX(inTileAddressX1, inTileAddressY0)), 2));
+	_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
+	_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y1, MortonEncode_AVX(inTileAddressX0, inTileAddressY1)), 2));
+
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
 		uint8_t const* mipPtr = _tex.m_texels.Data() + _tex.m_mipOffsets[_mips[i]];
 
 		{
-			uint8_t const* pix_x0y0 = mipPtr + 4 * (offs_x0y0[i] + MortonEncode(linear_x0[i], linear_y0[i]));
+			uint8_t const* pix_x0y0 = mipPtr + morton_x0y0[i];
 			__m128i const x0y0 = _mm_set1_epi32(*(uint32_t*)pix_x0y0);
 			_mm_storeu_ps(o_x0y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y0))));
 		}
 
 		{
-			uint8_t const* pix_x1y0 = mipPtr + 4 * (offs_x1y0[i] + MortonEncode(linear_x1[i], linear_y0[i]));
+			uint8_t const* pix_x1y0 = mipPtr + morton_x1y0[i];
 			__m128i const x1y0 = _mm_set1_epi32(*(uint32_t*)pix_x1y0);
 			_mm_storeu_ps(o_x1y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y0))));
 		}
 
 		{
-			uint8_t const* pix_x1y1 = mipPtr + 4 * (offs_x1y1[i] + MortonEncode(linear_x1[i], linear_y1[i]));
+			uint8_t const* pix_x1y1 = mipPtr + morton_x1y1[i];
 			__m128i const x1y1 = _mm_set1_epi32(*(uint32_t*)pix_x1y1);
 			_mm_storeu_ps(o_x1y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y1))));
 		}
 
 		{
-			uint8_t const* pix_x0y1 = mipPtr + 4 * (offs_x0y1[i] + MortonEncode(linear_x0[i], linear_y1[i]));
+			uint8_t const* pix_x0y1 = mipPtr + morton_x0y1[i];
 			__m128i const x0y1 = _mm_set1_epi32(*(uint32_t*)pix_x0y1);
 			_mm_storeu_ps(o_x0y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y1))));
 		}
