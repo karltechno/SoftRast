@@ -1,6 +1,8 @@
 # SoftRast
 Hobby software rasterizer, requires a CPU with AVX2/FMA.
 
+![Crytek Sponza](https://i.imgur.com/5z5ISe5.jpg)
+
 The goal of the project is to learn more about the graphics pipeline, software rendering and SIMD programming. 
 
 ## Features:
@@ -9,6 +11,7 @@ The goal of the project is to learn more about the graphics pipeline, software r
 - Texture sampling with billinear interpolation and tiled/morton order textures.
 - Multithreaded geometry processing and rasterization.
 - Sort middle architecture.
+- Reverse Z depth buffer (compile time toggleable).
 - Mip mapping using screen space partial derivatives.
 - No runtime memory allocation (all allocations go through thread local linear allocators with a large upfront allocation).
 - Simple OBJ model loader. Creates a binary out of the model and textures for instantaneous loading after the first run.
