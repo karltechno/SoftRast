@@ -11,7 +11,7 @@
 #include "Rasterizer.h"
 #include "Config.h"
 
-void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
+void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], uint32_t _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 	
@@ -45,10 +45,10 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 		dvdy[i] = _varyings[i * stride + 3];
 	}
 
-	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
+	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour, _execMask);
 }
 
-void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
+void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], uint32_t _execMask)
 {
 	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
 	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float) + 4;
