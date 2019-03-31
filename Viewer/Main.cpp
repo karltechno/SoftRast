@@ -45,20 +45,7 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 		dvdy[i] = _varyings[i * stride + 3];
 	}
 
-
-	volatile static bool DO_BILLINEAR = true;
-
-	if (!DO_BILLINEAR)
-	{
-		for (uint32_t i = 0; i < 8; ++i)
-		{
-			sr::Tex::SampleWrap_Slow(*tex, 0, u[i], v[i], &o_colour[i * 4]);
-		}
-	}
-	else
-	{
-		sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
-	}
+	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour);
 }
 
 void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask)
@@ -108,7 +95,7 @@ int main(int argc, char** argv)
 #if SR_USE_REVERSE_Z
 	proj.m_nearPlane = 10000.0f;
 	proj.m_farPlane = 0.1f;
-#else
+#else	
 	proj.m_nearPlane = 0.1f;
 	proj.m_farPlane = 10000.0f;
 #endif
