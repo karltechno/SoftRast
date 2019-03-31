@@ -16,7 +16,7 @@ The goal of the project is to learn more about the graphics pipeline, software r
 - No runtime memory allocation (all allocations go through thread local linear allocators with a large upfront allocation).
 - Simple OBJ model loader. Creates a binary out of the model and textures for instantaneous loading after the first run.
 
-For a rough performance indication as of writing this (although there are various optimization yet to do) I can render Crytek Sponza with diffuse texture mapping with each frame taking between 10-26ms depnding on where the camera is looking (average around 16ms). This is on an i7 4770k with 8 threads.
+For a rough performance indication as of writing this (although there are various optimizations yet to do) I can render Crytek Sponza with diffuse texture mapping with each frame taking between 10-26ms depnding on where the camera is looking (average around 16ms). This is on an i7 4770k with 8 threads.
 
 Various improvements are in todo.txt.
 
