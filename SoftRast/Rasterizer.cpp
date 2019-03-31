@@ -423,9 +423,11 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 		for (uint32_t drawCallFrag = 0; drawCallFrag < numFragsForCall; drawCallFrag += 8)
 		{
 			KT_ALIGNAS(32) float colourRGBA[4 * 8];
-			call.m_pixelShader(call.m_pixelUniforms, interpolants, colourRGBA, _mm256_setzero_ps());
-
+			
 			uint32_t const writePixels = kt::Min(8u, numFragsForCall - drawCallFrag);
+			uint32_t const laneMask = (1 << writePixels) - 1;
+
+			call.m_pixelShader(call.m_pixelUniforms, interpolants, colourRGBA, laneMask);
 
 			// Todo: 4 constant for derivatives
 			interpolants += writePixels * (4 + call.m_attributeBuffer.m_stride / sizeof(float));

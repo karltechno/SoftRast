@@ -226,7 +226,8 @@ static void GatherQuads
 	float o_x0y0[8 * 4],
 	float o_x1y0[8 * 4],
 	float o_x0y1[8 * 4],
-	float o_x1y1[8 * 4]
+	float o_x1y1[8 * 4],
+	uint32_t _execMask
 )
 {
 	// Compute the tile offsets.
@@ -265,8 +266,9 @@ static void GatherQuads
 	_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
 	_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y1, MortonEncode_AVX(inTileAddressX0, inTileAddressY1)), 2));
 
-
-	for (uint32_t i = 0; i < 8; ++i)
+	// Todo: this assumes that we are shading in lanes and that the execution mask never has any holes, only some bits from msb stripped.
+	uint32_t const numQuads = kt::Popcnt(_execMask);
+	for (uint32_t i = 0; i < numQuads; ++i)
 	{
 		uint8_t const* mipPtr = _tex.m_texels.Data() + _tex.m_mipOffsets[_mips[i]];
 		// Convert each pixel in the quad and store.
@@ -305,7 +307,8 @@ void SampleWrap
 	__m256 _dudy,
 	__m256 _dvdx,
 	__m256 _dvdy,
-	float o_colour[4 * 8]
+	float o_colour[4 * 8],
+	uint32_t _execMask
 )
 {
 	__m256i const mipFloor = CalcMipLevels(_tex, _dudx, _dudy, _dvdx, _dvdy);
@@ -361,7 +364,7 @@ void SampleWrap
 	KT_ALIGNAS(32) float x1y0_gather[8 * 4];
 	KT_ALIGNAS(32) float x1y1_gather[8 * 4];
 
-	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather);
+	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather, _execMask);
 
 	// pre swizzle interpolants (we are interpolating 2 texels (4 color channels) at once).
 	// This way we only need to do cross-lane permute once and can do variable isolated-lane permute the rest of the time (less latency)

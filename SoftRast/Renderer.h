@@ -56,7 +56,7 @@ struct FrameBuffer
 	uint32_t m_tilesX = 0;
 };
 
-using PixelShaderFn = void(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], __m256 const& _execMask);
+using PixelShaderFn = void(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], uint32_t _execMask);
 
 using VertexShaderFn = void(kt::Vec3 const& _vtx, void const* i_uniforms, void const* i_attribs, float* o_attribs);
 
