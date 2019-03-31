@@ -11,6 +11,8 @@
         - Scissor
         - Depth test
     - HI-Z
+    - Fast clear for depth + color
+    - Double buffer or pipeline the blitting. Looks like we could save a couple of ms very easily here.
 
 - Shading 
     - Simple lambert/specular shading pipeline (blinn-phong?)
