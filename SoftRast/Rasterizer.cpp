@@ -354,9 +354,7 @@ static bool ComputeInterpolantsDrawCallImpl
 			__m256 const uvOverW_x0y0_x1y0_x0y1_x1y1 = _mm256_fmadd_ps(u4_v4_dy, frag_y0_y0_y1_y1, _mm256_fmadd_ps(u4_v4_dx, frag_x0_x1_x0_x1, u4_v4_c));
 
 			// evaluate recipW for quad (though we only need 3 vals denoted in above comment)
-#if 1
 			__m256 const recipW_x0y0_x1y0_x0y1_x1y1 = _mm256_div_ps(_mm256_set1_ps(1.0f), _mm256_fmadd_ps(recipW_dx, frag_x0_x1_x0_x1, _mm256_fmadd_ps(recipW_dy, frag_y0_y0_y1_y1, recipW_c)));
-#endif
 
 			__m256 const uv_eval_x0y0_x1y0_x0y1_x1y1 = _mm256_mul_ps(recipW_x0y0_x1y0_x0y1_x1y1, uvOverW_x0y0_x1y0_x0y1_x1y1);
 
@@ -364,9 +362,9 @@ static bool ComputeInterpolantsDrawCallImpl
 			__m256 const uv_eval_x0y0 = _mm256_shuffle_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0_x1y0_x0y1_x1y1, _MM_SHUFFLE(0, 0, 0, 0));
 			__m256 const derivs = _mm256_sub_ps(uv_eval_x0y0_x1y0_x0y1_x1y1, uv_eval_x0y0);
 			// 4 du then 4 dv -> [0, dx, dy]
-			//static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 1 + 4, 2, 2 + 4, 0, 0, 0, 0);
 			static const __m256i deriv_permute_mask = _mm256_setr_epi32(1, 2, 1 + 4, 2 + 4, 0, 0, 0, 0);
 			__m128 const finalDerivs = _mm256_castps256_ps128(_mm256_permutevar8x32_ps(derivs, deriv_permute_mask));
+
 			// Storing: dudx, dudy, dvdx, dvdy
 			_mm_storeu_ps(io_attribs, finalDerivs);
 			io_attribs += 4;
@@ -550,7 +548,7 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 
 	buffer.m_interpolants = (float*)threadAllocator.Alloc(buffer.m_interpolantsAllocSize, 32);
 	KT_ASSERT(buffer.m_interpolants);
-	ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, buffer); // Todo: shouldn't reset every chunk
+	ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, buffer); 
 }
 
 }
