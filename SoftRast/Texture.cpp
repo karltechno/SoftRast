@@ -1,5 +1,6 @@
 #include <string.h>
 #include <intrin.h>
+#include <immintrin.h>
 
 #include <kt/Memory.h>
 #include <kt/Logging.h>
@@ -264,25 +265,25 @@ static void GatherQuads
 
 		{
 			uint8_t const* pix_x0y0 = mipPtr + morton_x0y0[i];
-			__m128i const x0y0 = _mm_set1_epi32(*(uint32_t*)pix_x0y0);
+			__m128i const x0y0 = _mm_cvtsi32_si128(*(uint32_t*)pix_x0y0);
 			_mm_storeu_ps(o_x0y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y0))));
 		}
 
 		{
 			uint8_t const* pix_x1y0 = mipPtr + morton_x1y0[i];
-			__m128i const x1y0 = _mm_set1_epi32(*(uint32_t*)pix_x1y0);
+			__m128i const x1y0 = _mm_cvtsi32_si128(*(uint32_t*)pix_x1y0);
 			_mm_storeu_ps(o_x1y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y0))));
 		}
 
 		{
 			uint8_t const* pix_x1y1 = mipPtr + morton_x1y1[i];
-			__m128i const x1y1 = _mm_set1_epi32(*(uint32_t*)pix_x1y1);
+			__m128i const x1y1 = _mm_cvtsi32_si128(*(uint32_t*)pix_x1y1);
 			_mm_storeu_ps(o_x1y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y1))));
 		}
 
 		{
 			uint8_t const* pix_x0y1 = mipPtr + morton_x0y1[i];
-			__m128i const x0y1 = _mm_set1_epi32(*(uint32_t*)pix_x0y1);
+			__m128i const x0y1 = _mm_cvtsi32_si128(*(uint32_t*)pix_x0y1);
 			_mm_storeu_ps(o_x0y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y1))));
 		}
 	}
