@@ -278,7 +278,7 @@ static void RasterizeTrisInBin_OutputFragments(DrawCall const& _call, DepthTile*
 }
 
 template <uint32_t NumAttribsAVXNoDerivT>
-static void ComputeInterpolantsDrawCallImpl
+static bool ComputeInterpolantsDrawCallImpl
 (
 	ThreadRasterCtx const& _ctx, 
 	FragmentBuffer& _buffer, 
@@ -287,7 +287,7 @@ static void ComputeInterpolantsDrawCallImpl
 	uint32_t* o_fragsPerDrawCall,
 	uint32_t const _numAttribsNoDeriv,
 	FragmentBuffer::Frag const*& io_frag,
-	uint32_t& io_fragIdx
+	uint32_t& io_nextFragIdx
 )
 {
 	uint32_t const drawCallIdx = _chunk.m_drawCallIdx;
@@ -384,22 +384,24 @@ static void ComputeInterpolantsDrawCallImpl
 
 			++o_fragsPerDrawCall[drawCallIdx];
 
-			if (io_fragIdx == _buffer.m_numFragments)
+			if (io_nextFragIdx == _buffer.m_numFragments)
 			{
-				return;
+				return true;
 			}
 
-			io_frag = &_buffer.m_fragments[io_fragIdx++];
+			io_frag = &_buffer.m_fragments[io_nextFragIdx++];
 
 		} while (io_frag->packedChunkTriIdx == packedTriChunkIdx);
 	} while (io_frag->chunkIdx == chunkIdx);
+
+	return false;
 }
 
 
 static void ComputeInterpolants(ThreadRasterCtx const& _ctx, BinChunk const* const* _chunks, FragmentBuffer& _buffer, uint32_t* o_fragsPerDrawCall)
 {
-	uint32_t fragIdx = 0;
-	FragmentBuffer::Frag const* frag = &_buffer.m_fragments[fragIdx++];
+	uint32_t nextFragIdx = 0;
+	FragmentBuffer::Frag const* frag = &_buffer.m_fragments[nextFragIdx++];
 
 	float* outAttribs = _buffer.m_interpolants;
 
@@ -413,22 +415,24 @@ static void ComputeInterpolants(ThreadRasterCtx const& _ctx, BinChunk const* con
 
 		if (numAttribsAvxNoDeriv == 1)
 		{
-			ComputeInterpolantsDrawCallImpl<1>(_ctx, _buffer, outAttribs, chunk, o_fragsPerDrawCall, numAttribsNoDeriv, frag, fragIdx);
+			if (ComputeInterpolantsDrawCallImpl<1>(_ctx, _buffer, outAttribs, chunk, o_fragsPerDrawCall, numAttribsNoDeriv, frag, nextFragIdx))
+			{
+				break;
+			}
 		}
 		else if (numAttribsAvxNoDeriv == 2)
 		{
-			ComputeInterpolantsDrawCallImpl<2>(_ctx, _buffer, outAttribs, chunk, o_fragsPerDrawCall, numAttribsNoDeriv, frag, fragIdx);
+			if (ComputeInterpolantsDrawCallImpl<2>(_ctx, _buffer, outAttribs, chunk, o_fragsPerDrawCall, numAttribsNoDeriv, frag, nextFragIdx))
+			{
+				break;
+			}
 		}
 		else
 		{
 			KT_UNREACHABLE;
 		}
-
-		if (fragIdx >= _buffer.m_numFragments)
-		{
-			return;
-		}
 	}
+	KT_ASSERT(nextFragIdx == _buffer.m_numFragments);
 }
 
 static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _tileIdx, BinChunk const* const* _chunks, FragmentBuffer& _buffer)
@@ -443,6 +447,17 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 	memset(fragsPerCall, 0, sizeof(uint32_t) * _ctx.m_numDrawCalls);
 
 	ComputeInterpolants(_ctx, _chunks, _buffer, fragsPerCall);
+
+#if KT_DEBUG
+	{
+		uint32_t totalFrags = 0;
+		for (uint32_t i = 0; i < _ctx.m_numDrawCalls; ++i)
+		{
+			totalFrags += fragsPerCall[i];
+		}
+		KT_ASSERT(totalFrags == _buffer.m_numFragments);
+	}
+#endif
 	   
 	float const* interpolants = _buffer.m_interpolants;
 	uint32_t globalFragIdx = 0;
