@@ -1,15 +1,15 @@
 - Front end
     - Vectorize binning/triangle setup
-
-- Rasterizer
     - Guard Band clipping - otherwise we need to clip every triangle intersecting l/r/t/b planes.
 
-- Overall pipeline
-    - Support vertex shading (or atleast converting integer attributes to floating point)
-    - Expose some control of renderer/rasterizer state.
+- Rasterizer
+    - Expose some control of rasterizer state.
         - Blending
         - Scissor
         - Depth test
+
+- Overall pipeline
+    - Support vertex shading (or atleast converting integer attributes to floating point)
     - HI-Z
     - Fast clear for depth + color
     - Double buffer or pipeline the blitting. Looks like we could save a couple of ms very easily here.
