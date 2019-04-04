@@ -557,6 +557,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t con
 		kt::FileWriter writer(cacheFile);
 		kt::ISerializer serializer(&writer, 0);
 		kt::Serialize(&serializer, *this);
+		fclose(cacheFile);
 	}
 	else
 	{
