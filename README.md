@@ -32,3 +32,4 @@ Various improvements are in todo.txt.
 - [Optimizing Software Occlusion Culling](https://fgiesen.wordpress.com/2013/02/17/optimizing-sw-occlusion-culling-index/)
 - [High-Performance Software Rasterization on GPUs](https://research.nvidia.com/publication/high-performance-software-rasterization-gpus)
 - [Rasterization: a Practical Implementation](https://www.scratchapixel.com/lessons/3d-basic-rendering/rasterization-practical-implementation/overview-rasterization-algorithm)
+- [MIP-map Level Selection for Texture Mapping](https://pdfs.semanticscholar.org/9eb3/0298a11e40adf3e3e2ca30b67c3cb90565cf.pdf)
