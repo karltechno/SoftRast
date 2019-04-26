@@ -11,13 +11,13 @@
 #include "Rasterizer.h"
 #include "Config.h"
 
-void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], uint32_t _execMask)
+void DiffuseTest(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 	
 	if (!tex || tex->m_texels.Size() == 0)
 	{
-		memset(o_colour, 0, 4 * 8 * sizeof(float));
+		//memset(o_colour, 0, 4 * 8 * sizeof(float));
 		return;
 	}
 
@@ -45,36 +45,42 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, float o_colour[4
 		dvdy[i] = _varyings[i * stride + 3];
 	}
 
-	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), o_colour, _execMask);
+	__m256 r;
+	__m256 g;
+	__m256 b;
+	__m256 a;
+
+	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), r, g, b, a, _execMask);
+	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
 
-void NormalShaderTest(void const* _uniforms, float const* _varyings, float o_colour[4 * 8], uint32_t _execMask)
+void NormalShaderTest(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
-	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
-	uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float) + 4;
-	uint32_t const greenOffset = redOffset + 1;
-	uint32_t const blueOffset = greenOffset + 1;
+	//uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
+	//uint32_t const redOffset = offsetof(sr::Obj::Vertex, norm) / sizeof(float) + 4;
+	//uint32_t const greenOffset = redOffset + 1;
+	//uint32_t const blueOffset = greenOffset + 1;
 
 #define WHITE_OUT (0)
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-#if WHITE_OUT
-		o_colour[i * 4 + 0] = 1.0f;
-		o_colour[i * 4 + 1] = 1.0f;
-		o_colour[i * 4 + 2] = 1.0f;
-#else
-		float const r = _varyings[i * stride + redOffset];
-		float const g = _varyings[i * stride + greenOffset];
-		float const b = _varyings[i * stride + blueOffset];
-
-		float const mul = 1.0f / sqrtf(r * r + g * g + b * b);
-
-		o_colour[i * 4 + 0] = r * mul * 0.5f + 0.5f;
-		o_colour[i * 4 + 1] = g * mul * 0.5f + 0.5f;
-		o_colour[i * 4 + 2] = b * mul * 0.5f + 0.5f;
-#endif
-		o_colour[i * 4 + 3] = 1.0f;
+//#if WHITE_OUT
+//		o_colour[i * 4 + 0] = 1.0f;
+//		o_colour[i * 4 + 1] = 1.0f;
+//		o_colour[i * 4 + 2] = 1.0f;
+//#else
+//		float const r = _varyings[i * stride + redOffset];
+//		float const g = _varyings[i * stride + greenOffset];
+//		float const b = _varyings[i * stride + blueOffset];
+//
+//		float const mul = 1.0f / sqrtf(r * r + g * g + b * b);
+//
+//		o_colour[i * 4 + 0] = r * mul * 0.5f + 0.5f;
+//		o_colour[i * 4 + 1] = g * mul * 0.5f + 0.5f;
+//		o_colour[i * 4 + 2] = b * mul * 0.5f + 0.5f;
+//#endif
+//		o_colour[i * 4 + 3] = 1.0f;
 	}
 }
 

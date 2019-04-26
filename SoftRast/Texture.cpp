@@ -214,7 +214,7 @@ static __m256i BoundCoordsWrap(__m256i _coord, __m256i _bound)
 	return _mm256_and_si256(_coord, _mm256_sub_epi32(_bound, one));
 }
 
-static void GatherQuads
+static void GatherQuadsAndInterpolate
 (
 	TextureData const& _tex, 
 	uint32_t _mips[8], 
@@ -223,10 +223,12 @@ static void GatherQuads
 	__m256i _y0, 
 	__m256i _x1,
 	__m256i _y1,
-	float o_x0y0[8 * 4],
-	float o_x1y0[8 * 4],
-	float o_x0y1[8 * 4],
-	float o_x1y1[8 * 4],
+	__m256& o_r,
+	__m256& o_g,
+	__m256& o_b,
+	__m256& o_a,
+	float _interpU[8],
+	float _interpV[8],
 	uint32_t _execMask
 )
 {
@@ -266,36 +268,77 @@ static void GatherQuads
 	_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
 	_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y1, MortonEncode_AVX(inTileAddressX0, inTileAddressY1)), 2));
 
+	// | denotes ymm reg split. Each row is a ymm reg. 
+	// If we load AoS with stride like this than we can tranpose independent 4x4 sub matrix in registers without cross lane permutes.
+	//      AoS					SoA
+	// [rgba0|rgba4]		[r0123|r4567]
+	// [rgba1|rgba5]		[g0123|g4567]
+	// [rgba2|rgba6]	->	[b0123|b4567]
+	// [rgba3|rgba7]		[b0123|b4567]
+
+	// f(x) = float offest
+	// f(0) = 0
+	// f(1) = 8
+	// f(2) = 16
+	// f(3) = 24
+	// f(4) = 4
+	// f(5) = 12
+	// f(6) = 20
+	// f(7) = 28
+
+	// f = x >= 4 ? (x%4)*8+4 : x*8
+
+	KT_ALIGNAS(32) float interpolatedTexels[8 * 4];
+
 	// Todo: this assumes that we are shading in lanes and that the execution mask never has any holes, only some bits from msb stripped.
 	uint32_t const numQuads = kt::Popcnt(_execMask);
 	for (uint32_t i = 0; i < numQuads; ++i)
 	{
 		uint8_t const* mipPtr = _tex.m_texels.Data() + _tex.m_mipOffsets[_mips[i]];
+		__m128 x0y0_tex, x1y1_tex, x1y0_tex, x0y1_tex;
 		// Convert each pixel in the quad and store.
 		{
 			uint8_t const* pix_x0y0 = mipPtr + morton_x0y0[i];
 			__m128i const x0y0 = _mm_cvtsi32_si128(*(uint32_t*)pix_x0y0);
-			_mm_storeu_ps(o_x0y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y0))));
+			x0y0_tex = _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y0)));
 		}
 
 		{
 			uint8_t const* pix_x1y0 = mipPtr + morton_x1y0[i];
 			__m128i const x1y0 = _mm_cvtsi32_si128(*(uint32_t*)pix_x1y0);
-			_mm_storeu_ps(o_x1y0 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y0))));
+			x1y0_tex = _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y0)));
 		}
 
 		{
 			uint8_t const* pix_x1y1 = mipPtr + morton_x1y1[i];
 			__m128i const x1y1 = _mm_cvtsi32_si128(*(uint32_t*)pix_x1y1);
-			_mm_storeu_ps(o_x1y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y1))));
+			x1y1_tex = _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x1y1)));
 		}
 
 		{
 			uint8_t const* pix_x0y1 = mipPtr + morton_x0y1[i];
 			__m128i const x0y1 = _mm_cvtsi32_si128(*(uint32_t*)pix_x0y1);
-			_mm_storeu_ps(o_x0y1 + i * 4, _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y1))));
+			x0y1_tex = _mm_mul_ps(_mm_set1_ps(1.0f / 255.0f), _mm_cvtepi32_ps(_mm_cvtepu8_epi32(x0y1)));
 		}
+
+		__m128 const interpU_broadcast = _mm_broadcast_ss(_interpU + i);
+		__m128 const interpV_broadcast = _mm_broadcast_ss(_interpV + i);
+		__m128 const left = _mm_fmadd_ps(interpV_broadcast, x0y1_tex, _mm_fnmadd_ps(interpV_broadcast, x0y0_tex, x0y0_tex));
+		__m128 const right = _mm_fmadd_ps(interpV_broadcast, x1y1_tex, _mm_fnmadd_ps(interpV_broadcast, x1y0_tex, x1y0_tex));
+		__m128 const finalInterp = _mm_fmadd_ps(interpU_broadcast, right, _mm_fnmadd_ps(interpU_broadcast, left, left));
+
+		// See above comment.
+		uint32_t const writeIdx = i >= 4 ? (i & 3) * 8 + 4 : i * 8;
+		_mm_store_ps(interpolatedTexels + writeIdx, finalInterp);
 	}
+
+	o_r = _mm256_load_ps(interpolatedTexels);
+	o_g = _mm256_load_ps(interpolatedTexels + 8);
+	o_b = _mm256_load_ps(interpolatedTexels + 16);
+	o_a = _mm256_load_ps(interpolatedTexels + 24);
+
+	simdutil::Transpose4x4SubMatricies(o_r, o_g, o_b, o_a);
+
 }
 
 void SampleWrap
@@ -307,7 +350,10 @@ void SampleWrap
 	__m256 _dudy,
 	__m256 _dvdx,
 	__m256 _dvdy,
-	float o_colour[4 * 8],
+	__m256& o_r,
+	__m256& o_g,
+	__m256& o_b,
+	__m256& o_a,
 	uint32_t _execMask
 )
 {
@@ -359,40 +405,13 @@ void SampleWrap
 	KT_ALIGNAS(32) uint32_t mips[8];
 	_mm256_store_si256((__m256i*)mips, mipFloor);
 
-	KT_ALIGNAS(32) float x0y0_gather[8 * 4];
-	KT_ALIGNAS(32) float x0y1_gather[8 * 4];
-	KT_ALIGNAS(32) float x1y0_gather[8 * 4];
-	KT_ALIGNAS(32) float x1y1_gather[8 * 4];
+	KT_ALIGNAS(32) float interpU[8];
+	KT_ALIGNAS(32) float interpV[8];
 
-	GatherQuads(_tex, mips, width, x0, y0, x1, y1, x0y0_gather, x1y0_gather, x0y1_gather, x1y1_gather, _execMask);
+	_mm256_store_ps(interpU, u_interp);
+	_mm256_store_ps(interpV, v_interp);
 
-	// pre swizzle interpolants (we are interpolating 2 texels (4 color channels) at once).
-	// This way we only need to do cross-lane permute once and can do variable isolated-lane permute the rest of the time (less latency)
-	__m256 const v_interp_cross_swizzled = _mm256_permutevar8x32_ps(v_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
-	__m256 const u_interp_cross_swizzled = _mm256_permutevar8x32_ps(u_interp, _mm256_setr_epi32(0, 2, 4, 6, 1, 3, 5, 7));
-
-	__m256i permMask = _mm256_setzero_si256();
-
-	for (uint32_t i = 0; i < 4; ++i)
-	{
-		__m256 const interpV_perm = _mm256_permutevar_ps(v_interp_cross_swizzled, permMask);
-		__m256 const interpU_perm = _mm256_permutevar_ps(u_interp_cross_swizzled, permMask);
-		permMask = _mm256_add_epi32(_mm256_set1_epi32(1), permMask);
-
-		// Bilinear interpolate.
-
-		__m256 const x0y0 = _mm256_load_ps(x0y0_gather + i * 8);
-		__m256 const x0y1 = _mm256_load_ps(x0y1_gather + i * 8);
-
-		__m256 const left = _mm256_fmadd_ps(interpV_perm, x0y1, _mm256_fnmadd_ps(interpV_perm, x0y0, x0y0));
-
-		__m256 const x1y0 = _mm256_load_ps(x1y0_gather + i * 8);
-		__m256 const x1y1 = _mm256_load_ps(x1y1_gather + i * 8);
-
-		__m256 const right = _mm256_fmadd_ps(interpV_perm, x1y1, _mm256_fnmadd_ps(interpV_perm, x1y0, x1y0));
-
-		_mm256_store_ps(o_colour + i * 8, _mm256_fmadd_ps(interpU_perm, right, _mm256_fnmadd_ps(interpU_perm, left, left)));
-	}
+	GatherQuadsAndInterpolate(_tex, mips, width, x0, y0, x1, y1, o_r, o_g, o_b, o_a, interpU, interpV, _execMask);
 }
 
 }

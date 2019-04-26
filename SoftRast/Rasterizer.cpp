@@ -465,11 +465,11 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 		uint32_t const numFragsForCall = fragsPerCall[drawCallIdx];
 
 		DrawCall const& call = _ctx.m_drawCalls[drawCallIdx];
-		uint8_t* pixelWrite = call.m_frameBuffer->m_colourTiles[_tileIdx].m_colour;
+		uint32_t* pixelWrite = (uint32_t*)call.m_frameBuffer->m_colourTiles[_tileIdx].m_colour;
 
 		for (uint32_t drawCallFrag = 0; drawCallFrag < numFragsForCall; drawCallFrag += 8)
 		{
-			KT_ALIGNAS(32) float colourRGBA[4 * 8];
+			KT_ALIGNAS(32) uint32_t colourRGBA[8];
 
 			uint32_t const writePixels = kt::Min(8u, numFragsForCall - drawCallFrag);
 			uint32_t const laneMask = (1 << writePixels) - 1;
@@ -483,11 +483,7 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 			{
 				FragmentBuffer::Frag const& frag = _buffer.m_fragments[globalFragIdx++];
 				uint32_t const pixIdx = frag.y * Config::c_binWidth + frag.x;
-				pixelWrite[pixIdx * 4 + 0] = uint8_t(kt::Min(1.0f, colourRGBA[i * 4]) * 255.0f);
-				pixelWrite[pixIdx * 4 + 1] = uint8_t(kt::Min(1.0f, colourRGBA[i * 4 + 1]) * 255.0f);
-				pixelWrite[pixIdx * 4 + 2] = uint8_t(kt::Min(1.0f, colourRGBA[i * 4 + 2]) * 255.0f);
-				pixelWrite[pixIdx * 4 + 3] = 255;
-
+				pixelWrite[pixIdx] = colourRGBA[i];
 			}
 		}
 	}
