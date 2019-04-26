@@ -5,6 +5,8 @@
 #include <kt/Array.h>
 #include <kt/Mat4.h>
 
+#include <atomic>
+
 #include "SoftRastTypes.h"
 #include "TaskSystem.h"
 #include "Binning.h"
@@ -34,17 +36,12 @@ struct DepthTile
 	float m_hiZmax;
 };
 
-struct FrameBuffer
+struct FrameBufferPlane
 {
-	KT_NO_COPY(FrameBuffer);
-	FrameBuffer() = default;
-	FrameBuffer(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
-	~FrameBuffer();
+	FrameBufferPlane() = default;
+	KT_NO_COPY(FrameBufferPlane);
 
 	void Init(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
-
-	void Blit(uint8_t* _linearFramebuffer);
-	void BlitDepth(uint8_t* _linearFramebuffer);
 
 	ColourTile* m_colourTiles = nullptr;
 	DepthTile* m_depthTiles = nullptr;
@@ -54,6 +51,41 @@ struct FrameBuffer
 
 	uint32_t m_tilesY = 0;
 	uint32_t m_tilesX = 0;
+};
+
+struct FrameBuffer
+{
+	KT_NO_COPY(FrameBuffer);
+	FrameBuffer(uint32_t _width, uint32_t _height, bool _colour = true, bool _depth = true);
+	~FrameBuffer();
+
+	FrameBufferPlane* WritePlane()
+	{
+		return &m_bufferedPlanes[m_writePlane];
+	}
+
+	FrameBufferPlane const* ReadPlane() const
+	{
+		return &m_bufferedPlanes[m_writePlane ^ 1];
+	}
+
+	void SwapPlanes()
+	{
+		m_writePlane ^= 1;
+	}
+
+	FrameBufferPlane m_bufferedPlanes[2];
+	uint32_t m_writePlane = 0;
+
+	struct JobData
+	{
+		Task m_task;
+		FrameBufferPlane* m_plane = nullptr;
+		uint8_t* m_linearPixels = nullptr;
+		std::atomic<uint32_t> m_counter{ 0 };
+		void(*m_onFinishBlit)(void*) = nullptr;
+		void* m_onFinishBlitUser = nullptr;
+	} m_jobs[2];
 };
 
 using PixelShaderFn = void(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask);
@@ -78,7 +110,7 @@ struct DrawCall
 	DrawCall& SetIndexBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetPositionBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num);
 	DrawCall& SetAttributeBuffer(void const* _buffer, uint32_t const _stride, uint32_t const _num, uint32_t const _uvOffset = 0);
-	DrawCall& SetFrameBuffer(FrameBuffer const* _buffer);
+	DrawCall& SetFrameBuffer(FrameBuffer* _buffer);
 	DrawCall& SetMVP(kt::Mat4 const& _mvp);
 
 	VertexShaderFn* m_vertexShader = nullptr;
@@ -94,7 +126,7 @@ struct DrawCall
 
 	uint32_t m_uvOffset = 0;
 	
-	FrameBuffer const* m_frameBuffer = nullptr;
+	FrameBufferPlane const* m_frameBuffer = nullptr;
 
 	kt::Mat4 m_mvp = kt::Mat4::Identity();
 
@@ -120,6 +152,8 @@ public:
 
 	void BeginFrame();
 	void EndFrame();
+
+	void Blit(FrameBuffer& _fb, uint8_t* _linearPixels, void(*_onFinishBlit)(void*) = nullptr, void* _onFinishUser = nullptr);
 
 private:
 	TaskSystem m_taskSystem;

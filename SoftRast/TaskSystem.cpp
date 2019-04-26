@@ -123,6 +123,7 @@ void TaskSystem::PushTask(Task* _task)
 		uint32_t tasksPushed = 0;
 
 		totalTasks = (_task->m_totalPartitions + _task->m_granularity - 1) / _task->m_granularity;
+		KT_ASSERT(totalTasks);
 
 		if (_task->m_taskCounter)
 		{

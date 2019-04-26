@@ -143,8 +143,7 @@ int main(int argc, char** argv)
 
 	sr::RenderContext renderCtx;
 	
-	sr::FrameBuffer framebuffer;
-	framebuffer.Init(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
+	sr::FrameBuffer framebuffer(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
 	while (!window.WantsQuit())
 	{
@@ -158,7 +157,7 @@ int main(int argc, char** argv)
 		for (sr::Obj::Mesh const& mesh : model.m_meshes)
 		{
 			sr::DrawCall call;
-			call.m_frameBuffer = &framebuffer;
+			call.SetFrameBuffer(&framebuffer);
 			call.m_mvp = controller.GetCam().GetCachedViewProj();
 
 			call.SetAttributeBuffer(mesh.m_vertexData.Data(), sizeof(sr::Obj::Vertex), mesh.m_vertexData.Size(), offsetof(sr::Obj::Vertex, uv) / sizeof(float));
@@ -190,19 +189,17 @@ int main(int argc, char** argv)
 
 		renderCtx.EndFrame();
 
-		static bool blitDepth = false;
+		//static bool blitDepth = false;
 
-		if (blitDepth)
+		//if (blitDepth)
+		//{
+		//	framebuffer.BlitDepth(window.BackBufferData());
+		//}
+		//else
 		{
-			framebuffer.BlitDepth(window.BackBufferData());
-		}
-		else
-		{
-			framebuffer.Blit(window.BackBufferData());
+			renderCtx.Blit(framebuffer, window.BackBufferData(), [](void* _ptr) { ((sr::Window_Win32*)_ptr)->Flip(); }, &window);
 		}
 
-
-		window.Flip();
 
 		kt::TimePoint const timeNow = kt::TimePoint::Now();
 		frameTime = timeNow - prevFrameTime;
