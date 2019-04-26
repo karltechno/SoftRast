@@ -17,40 +17,61 @@ void DiffuseTest(void const* _uniforms, float const* _varyings, uint32_t o_texel
 	
 	if (!tex || tex->m_texels.Size() == 0)
 	{
-		//memset(o_colour, 0, 4 * 8 * sizeof(float));
+		memset(o_texels, 0xFFFFFFFF, 8 * sizeof(uint32_t));
 		return;
 	}
 
 	uint32_t const stride = (sizeof(sr::Obj::Vertex) / sizeof(float)) + 4;
 
-	KT_ALIGNAS(32) float u[8];
-	KT_ALIGNAS(32) float v[8];
+	__m256 dudx;
+	__m256 dudy;
+	__m256 dvdx;
+	__m256 dvdy;
 
-	KT_ALIGNAS(32) float dudx[8];
-	KT_ALIGNAS(32) float dudy[8];
-	KT_ALIGNAS(32) float dvdx[8];
-	KT_ALIGNAS(32) float dvdy[8];
+	// load as rows and transpose sub 4x4 matricies.
+	// [dudx0 dudy0 dvdx0 dvdy0 | dudx4 dudy4 dvdx4 dvdy4] 
+	// [dudx1 dudy1 dvdx1 dvdy1 | dudx5 dudy5 dvdx5 dvdy5] 
+	// [dudx2 dudy2 dvdx2 dvdy2 | dudx6 dudy6 dvdx6 dvdy6] 
+	// [dudx3 dudy3 dvdx3 dvdy3 | dudx7 dudy7 dvdx7 dvdy7] 
 
-	uint32_t const uOffs = offsetof(sr::Obj::Vertex, uv) / sizeof(float);
-	uint32_t const vOffs = 1 + offsetof(sr::Obj::Vertex, uv) / sizeof(float);
+	dudx = _mm256_loadu2_m128(_varyings + stride * 4, _varyings + stride * 0);
+	dudy = _mm256_loadu2_m128(_varyings + stride * 5, _varyings + stride * 1);
+	dvdx = _mm256_loadu2_m128(_varyings + stride * 6, _varyings + stride * 2);
+	dvdy = _mm256_loadu2_m128(_varyings + stride * 7, _varyings + stride * 3);
 
-	for (uint32_t i = 0; i < 8; ++i)
+	sr::simdutil::Transpose4x4SubMatricies(dudx, dudy, dvdx, dvdy);
+
+	/*
+	struct Vertex
 	{
-		u[i] = _varyings[4 + i * stride + uOffs];
-		v[i] = _varyings[4 + i * stride + vOffs];
+		kt::Vec3 pos;
+		kt::Vec3 norm;
+		kt::Vec2 uv;
+	};
+	*/
 
-		dudx[i] = _varyings[i * stride];
-		dudy[i] = _varyings[i * stride + 1];
-		dvdx[i] = _varyings[i * stride + 2];
-		dvdy[i] = _varyings[i * stride + 3];
-	}
+	__m256 pos_x, pos_y, pos_z;
+	__m256 norm_x, norm_y, norm_z;
+	__m256 u, v;
+
+	float const* vertexVaryingBegin = _varyings + 4;
+	pos_x	= _mm256_loadu_ps(vertexVaryingBegin);
+	pos_y	= _mm256_loadu_ps(vertexVaryingBegin + stride);
+	pos_z	= _mm256_loadu_ps(vertexVaryingBegin + stride * 2);
+	norm_x	= _mm256_loadu_ps(vertexVaryingBegin + stride * 3);
+	norm_y	= _mm256_loadu_ps(vertexVaryingBegin + stride * 4);
+	norm_z	= _mm256_loadu_ps(vertexVaryingBegin + stride * 5);
+	u		= _mm256_loadu_ps(vertexVaryingBegin + stride * 6);
+	v		= _mm256_loadu_ps(vertexVaryingBegin + stride * 7);
+
+	sr::simdutil::Transpose8x8(pos_x, pos_y, pos_z, norm_x, norm_y, norm_z, u, v);
 
 	__m256 r;
 	__m256 g;
 	__m256 b;
 	__m256 a;
 
-	sr::Tex::SampleWrap(*tex, _mm256_load_ps(u), _mm256_load_ps(v), _mm256_load_ps(dudx), _mm256_load_ps(dudy), _mm256_load_ps(dvdx), _mm256_load_ps(dvdy), r, g, b, a, _execMask);
+	sr::Tex::SampleWrap(*tex, u, v, dudx, dudy, dvdx, dvdy, r, g, b, a, _execMask);
 	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
 
@@ -118,7 +139,7 @@ int main(int argc, char** argv)
 	model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
 
-	kt::Duration frameTime = kt::Duration::FromMicroseconds(16.0);
+	kt::Duration frameTime = kt::Duration::FromMilliseconds(16.0);
 
 	sr::RenderContext renderCtx;
 	
