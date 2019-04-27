@@ -129,8 +129,9 @@ void TextureData::CreateFromRGBA8(uint8_t const* _texels, uint32_t _width, uint3
 	{
 		m_numMips = 1;
 		m_mipOffsets[0] = 0;
+
 		m_texels.Resize(_width * _height * m_bytesPerPixel);
-		memcpy(m_texels.Data(), _texels, m_texels.Size());
+		TileTexture(_texels, m_texels.Data(), _width, _height);
 		return;
 	}
 
