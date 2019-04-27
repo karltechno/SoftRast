@@ -225,10 +225,9 @@ void RenderContext::EndFrame()
 
 		Task* task = drawCallTasks + i;
 
-		kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData);
+		kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData, &frontEndCounter);
 		taskData->call = &draw;
 		taskData->ctx = this;
-		task->m_taskCounter = &frontEndCounter;
 
 		m_taskSystem.PushTask(task);
 	}
