@@ -159,6 +159,9 @@ void RenderContext::DrawIndexed(DrawCall const& _call)
 
 void RenderContext::ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color, bool _clearColour /*= true*/, bool _clearDepth /*= true*/)
 {
+
+	KT_ASSERT(_buffer.m_jobs[_buffer.m_writePlane].m_counter.load() == 0);
+
 	// TODO: Fast clear
 	FrameBufferPlane const& plane = *_buffer.WritePlane();
 	if (_clearDepth)
@@ -312,6 +315,9 @@ static void BlitJobFn(FrameBuffer::JobData const& _job)
 
 void RenderContext::Blit(FrameBuffer& _fb, uint8_t* _linearPixels, void(*_onFinishBlit)(void*), void* _onFinishUser)
 {
+	// Ensure last blit is finished
+	m_taskSystem.WaitForCounter(&_fb.m_jobs[_fb.m_writePlane ^ 1].m_counter);
+
 	uint32_t const idx = _fb.m_writePlane;
 	std::atomic_store_explicit(&_fb.m_jobs[idx].m_counter, 0, std::memory_order_relaxed);
 	_fb.m_jobs[idx].m_linearPixels = _linearPixels;
@@ -330,9 +336,6 @@ void RenderContext::Blit(FrameBuffer& _fb, uint8_t* _linearPixels, void(*_onFini
 
 
 	m_taskSystem.PushTask(&_fb.m_jobs[idx].m_task);
-
-	// ensure we can start writing to the next frame buffer.
-	m_taskSystem.WaitForCounter(&_fb.m_jobs[_fb.m_writePlane].m_counter);
 }
 
 }
