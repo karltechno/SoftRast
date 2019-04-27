@@ -10,6 +10,8 @@
 #include "Platform/Window_Win32.h"
 #include "Rasterizer.h"
 #include "Config.h"
+#include "Shaders.h"
+#include "Scene.h"
 
 void DiffuseTest(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
@@ -113,79 +115,31 @@ int main(int argc, char** argv)
 	kt::TimePoint prevFrameTime = kt::TimePoint::Now();
 	kt::Duration totalTime = kt::Duration::Zero();
 
-	sr::FreeCamController controller;
-	
-	sr::FreeCamController::ProjectionParams proj;
-	proj.m_aspect = float(sr::Config::c_screenWidth) / float(sr::Config::c_screenHeight);
-	proj.m_fov = kt::ToRadians(85.0f);
-
-#if SR_USE_REVERSE_Z
-	proj.m_nearPlane = 10000.0f;
-	proj.m_farPlane = 0.1f;
-#else	
-	proj.m_nearPlane = 0.1f;
-	proj.m_farPlane = 10000.0f;
-#endif
-
-	controller.SetProjectionParams(proj);
-	controller.SetPos({ 0.0f, 0.0f, -2.0f });
-
 	uint32_t logDtCounter = 0;
-	
+	sr::Scene* scene = nullptr;
 	sr::Obj::Model model;
-	//model.Load("Models/dragon.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/bunny.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	//model.Load("Models/cube/cube.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
-	model.Load("Models/sponza-crytek/sponza.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
-	//model.Load("Models/teapot/teapot.obj", kt::GetDefaultAllocator(), sr::Obj::LoadFlags::FlipWinding);
+	//scene = new sr::SimpleModelScene("Models/dragon.obj", sr::Obj::LoadFlags::FlipWinding);
+	//scene = new sr::SimpleModelScene("Models/bunny.obj", sr::Obj::LoadFlags::FlipWinding);
+	//scene = new sr::SimpleModelScene("Models/cube/cube.obj", sr::Obj::LoadFlags::FlipWinding);
+	scene = new sr::SimpleModelScene("Models/sponza-crytek/sponza.obj", sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	//scene = new sr::SimpleModelScene("Models/teapot/teapot.obj", sr::Obj::LoadFlags::FlipWinding);
+	//scene = new sr::SimpleModelScene("Models/lost_empire/lost_empire.obj", sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+
+	scene->Init(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
 	kt::Duration frameTime = kt::Duration::FromMilliseconds(16.0);
 
 	sr::RenderContext renderCtx;
-	
 	sr::FrameBuffer framebuffer(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
 	while (!window.WantsQuit())
 	{
 		window.PumpMessageLoop();
 		sr::input::Tick((float)frameTime.Seconds());
-		controller.UpdateViewGamepad((float)frameTime.Seconds());
 
 		renderCtx.BeginFrame();
-		renderCtx.ClearFrameBuffer(framebuffer, 0);
-
-		for (sr::Obj::Mesh const& mesh : model.m_meshes)
-		{
-			sr::DrawCall call;
-			call.SetFrameBuffer(&framebuffer);
-			call.m_mvp = controller.GetCam().GetCachedViewProj();
-
-			call.SetAttributeBuffer(mesh.m_vertexData.Data(), sizeof(sr::Obj::Vertex), mesh.m_vertexData.Size(), offsetof(sr::Obj::Vertex, uv) / sizeof(float));
-
-			call.m_positionBuffer.m_ptr = (uint8_t*)mesh.m_vertexData.Data();
-			call.m_positionBuffer.m_stride = sizeof(sr::Obj::Vertex);
-			call.m_positionBuffer.m_num = mesh.m_vertexData.Size();
-
-			call.m_indexBuffer.m_ptr = mesh.m_indexData.Data();
-			//call.m_indexBuffer.m_ptr = mesh.m_indexData.index16 + 18;
-			//call.m_indexBuffer.m_num = 3;
-			call.m_indexBuffer.m_num = mesh.m_numIndicies;
-			call.m_indexBuffer.m_stride = mesh.m_indexType == sr::IndexType::u16 ? sizeof(uint16_t) : sizeof(uint32_t);
-			
-		
-			if (mesh.m_matIdx < model.m_materials.Size())
-			{
-				call.m_pixelUniforms = &model.m_materials[mesh.m_matIdx].m_diffuse;
-				call.m_pixelShader = DiffuseTest;
-			}
-			else
-			{
-				call.m_pixelShader = NormalShaderTest;
-			}
-
-
-			renderCtx.DrawIndexed(call);
-		}
+	
+		scene->Update(renderCtx, framebuffer, frameTime.Seconds());
 
 		renderCtx.EndFrame();
 
@@ -212,6 +166,7 @@ int main(int argc, char** argv)
 		}
 	}
 
+	delete scene;
 	sr::input::Shutdown();
 	return 1;
 }
