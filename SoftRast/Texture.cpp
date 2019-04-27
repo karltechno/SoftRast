@@ -107,24 +107,38 @@ void TextureData::CreateFromFile(char const* _file)
 	}
 
 	KT_SCOPE_EXIT(stbi_image_free(srcImageData));
+	CreateFromRGBA8(srcImageData, uint32_t(x), uint32_t(y), true);
+}
 
-	KT_ASSERT(kt::IsPow2(x) && kt::IsPow2(y));
+void TextureData::CreateFromRGBA8(uint8_t const* _texels, uint32_t _width, uint32_t _height, bool _calcMips /*= false*/)
+{
 
-	m_widthLog2 = kt::FloorLog2(uint32_t(x));
-	m_heightLog2 = kt::FloorLog2(uint32_t(y));
+	KT_ASSERT(kt::IsPow2(_width) && kt::IsPow2(_height));
+
+	m_widthLog2 = kt::FloorLog2(uint32_t(_width));
+	m_heightLog2 = kt::FloorLog2(uint32_t(_height));
 
 	KT_ASSERT(m_heightLog2 < Config::c_maxTexDimLog2);
 	KT_ASSERT(m_widthLog2 < Config::c_maxTexDimLog2);
-	KT_ASSERT((x % c_texTileSize) == 0);
-	KT_ASSERT((y % c_texTileSize) == 0); // TODO: Pad if this isn't true (but will be with 2^x x>=5)
-	
-	m_bytesPerPixel = req_comp;
+	KT_ASSERT((_width % c_texTileSize) == 0);
+	KT_ASSERT((_height % c_texTileSize) == 0); // TODO: Pad if this isn't true (but will be with 2^x x>=5)
+
+	m_bytesPerPixel = 4;
+
+	if (!_calcMips)
+	{
+		m_numMips = 1;
+		m_mipOffsets[0] = 0;
+		m_texels.Resize(_width * _height * m_bytesPerPixel);
+		memcpy(m_texels.Data(), _texels, m_texels.Size());
+		return;
+	}
 
 	// Calculate mips.
-	
-	uint32_t const fullMipChainLen = kt::FloorLog2(kt::Max(uint32_t(x), uint32_t(y))) + 1; // +1 for base tex.
+
+	uint32_t const fullMipChainLen = kt::FloorLog2(kt::Max(uint32_t(_width), uint32_t(_height))) + 1; // +1 for base tex.
 	m_numMips = fullMipChainLen;
-	
+
 	struct MipInfo
 	{
 		uint32_t m_offs;
@@ -137,7 +151,7 @@ void TextureData::CreateFromFile(char const* _file)
 
 	for (uint32_t mipIdx = 0; mipIdx < fullMipChainLen; ++mipIdx)
 	{
-		CalcMipDims2D(uint32_t(x), uint32_t(y), mipIdx, mipInfos[mipIdx].m_dims);
+		CalcMipDims2D(uint32_t(_width), uint32_t(_height), mipIdx, mipInfos[mipIdx].m_dims);
 		mipInfos[mipIdx].m_offs = curMipDataOffset;
 		m_mipOffsets[mipIdx] = curMipDataOffset;
 
@@ -145,7 +159,7 @@ void TextureData::CreateFromFile(char const* _file)
 		uint32_t const mipDimX_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[0], c_texTileSize));
 		uint32_t const mipDimY_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[1], c_texTileSize));
 
-		curMipDataOffset += mipDimX_tilePad * mipDimY_tilePad * req_comp;
+		curMipDataOffset += mipDimX_tilePad * mipDimY_tilePad * m_bytesPerPixel;
 	}
 
 
@@ -153,9 +167,9 @@ void TextureData::CreateFromFile(char const* _file)
 	uint8_t* texWritePointer = m_texels.Data();
 
 	// tile mip 0
-	TileTexture(srcImageData, texWritePointer, mipInfos[0].m_dims[0], mipInfos[0].m_dims[1]);
+	TileTexture(_texels, texWritePointer, mipInfos[0].m_dims[0], mipInfos[0].m_dims[1]);
 
-	uint32_t const largestMipSize = x * y * 4;
+	uint32_t const largestMipSize = _width * _height * m_bytesPerPixel;
 	uint8_t* tempResizeBuff = (uint8_t*)kt::Malloc(largestMipSize);
 	KT_SCOPE_EXIT(kt::Free(tempResizeBuff));
 
@@ -167,7 +181,7 @@ void TextureData::CreateFromFile(char const* _file)
 		uint32_t const mipDimX = mipInfo.m_dims[0];
 		uint32_t const mipDimY = mipInfo.m_dims[1];
 
-		stbir_resize_uint8(srcImageData, x, y, 0, tempResizeBuff, mipDimX, mipDimY, 0, req_comp);
+		stbir_resize_uint8(_texels, _width, _height, 0, tempResizeBuff, mipDimX, mipDimY, 0, m_bytesPerPixel);
 		TileTexture(tempResizeBuff, mipPtr, mipDimX, mipDimY);
 	}
 }

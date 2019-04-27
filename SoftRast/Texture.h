@@ -27,6 +27,7 @@ struct TextureData
 	TextureData& operator=(TextureData&&) = default;
 		
 	void CreateFromFile(char const* _file);
+	void CreateFromRGBA8(uint8_t const* _texels, uint32_t _width, uint32_t _height, bool _calcMips = false);
 	void Clear();
 
 	kt::Array<uint8_t> m_texels;
