@@ -77,15 +77,6 @@ DrawCall::DrawCall()
 }
 
 
-DrawCall& DrawCall::SetVertexShader(VertexShaderFn* _fn, void const* _uniforms, uint32_t const _outAttributeStrideBytes)
-{
-	KT_ASSERT(_outAttributeStrideBytes <= Config::c_maxVaryings * sizeof(float));
-	m_vertexShader = _fn;
-	m_vertexUniforms = _uniforms;
-	m_outAttributeStrideBytes = _outAttributeStrideBytes;
-	return *this;
-}
-
 DrawCall& DrawCall::SetPixelShader(PixelShaderFn _fn, void const* _uniforms)
 {
 	m_pixelShader = _fn;
