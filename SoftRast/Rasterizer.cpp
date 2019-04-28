@@ -3,13 +3,16 @@
 #include "Renderer.h"
 #include "kt/Sort.h"
 
+#include "microprofile.h"
+
+MICROPROFILE_DEFINE(RasterAndShadeTile, "Backend", "RasterAndShadeTile", MP_GREEN);
+MICROPROFILE_DEFINE(RasterFragments, "Backend", "RasterFragments", MP_GREEN1);
+MICROPROFILE_DEFINE(ComputeInterpolants, "Backend", "ComputeInterpolants", MP_GREEN2);
+MICROPROFILE_DEFINE(ShadeFragments, "Backend", "ShadeFragments", MP_GREEN3);
+
 namespace sr
 {
 
-struct FragmentStream
-{
-
-};
 
 struct FragmentBuffer
 {
@@ -398,6 +401,7 @@ static bool ComputeInterpolantsDrawCallImpl
 
 static void ComputeInterpolants(ThreadRasterCtx const& _ctx, BinChunk const* const* _chunks, FragmentBuffer& _buffer, uint32_t* o_fragsPerDrawCall)
 {
+	MICROPROFILE_SCOPE(ComputeInterpolants);
 	uint32_t nextFragIdx = 0;
 	FragmentBuffer::Frag const* frag = &_buffer.m_fragments[nextFragIdx++];
 
@@ -456,7 +460,8 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 		KT_ASSERT(totalFrags == _buffer.m_numFragments);
 	}
 #endif
-	   
+	MICROPROFILE_SCOPE(ShadeFragments);
+
 	float const* interpolants = _buffer.m_interpolants;
 	uint32_t globalFragIdx = 0;
 
@@ -492,6 +497,8 @@ static void ShadeFragmentBuffer(ThreadRasterCtx const& _ctx, uint32_t const _til
 
 void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 {
+	MICROPROFILE_SCOPE(RasterAndShadeTile);
+
 	ThreadScratchAllocator& threadAllocator = _ctx.m_ctx->ThreadAllocator();
 	ThreadScratchAllocator::AllocScope const allocScope(threadAllocator);
 
@@ -535,16 +542,22 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 	buffer.m_allocator = &threadAllocator;
 	KT_ASSERT(buffer.m_fragments);
 
-	for (uint32_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx)
 	{
-		BinChunk& curChunk = *sortedChunks[chunkIdx];
-		DrawCall const& call = _ctx.m_drawCalls[curChunk.m_drawCallIdx];
-		RasterizeTrisInBin_OutputFragments(call, &call.m_frameBuffer->m_depthTiles[tileIdx], curChunk, chunkIdx, buffer);
+		//MICROPROFILE_SCOPE(RasterFragments);
+		MICROPROFILE_SCOPEI("Backend", "RasterFragments", MP_BLUE1);
+		for (uint32_t chunkIdx = 0; chunkIdx < numChunks; ++chunkIdx)
+		{
+			BinChunk& curChunk = *sortedChunks[chunkIdx];
+			DrawCall const& call = _ctx.m_drawCalls[curChunk.m_drawCallIdx];
+			RasterizeTrisInBin_OutputFragments(call, &call.m_frameBuffer->m_depthTiles[tileIdx], curChunk, chunkIdx, buffer);
+		}
 	}
 
-	buffer.m_interpolants = (float*)threadAllocator.Alloc(buffer.m_interpolantsAllocSize, 32);
-	KT_ASSERT(buffer.m_interpolants);
-	ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, buffer); 
+	{
+		buffer.m_interpolants = (float*)threadAllocator.Alloc(buffer.m_interpolantsAllocSize, 32);
+		KT_ASSERT(buffer.m_interpolants);
+		ShadeFragmentBuffer(_ctx, tileIdx, sortedChunks, buffer);
+	}
 }
 
 }

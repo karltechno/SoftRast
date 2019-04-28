@@ -4,6 +4,14 @@
 #include "Renderer.h"
 #include "TaskSystem.h"
 
+#include "microprofile.h"
+
+
+MICROPROFILE_DEFINE(BinTriBatch, "Frontend", "BinTriBatch", MP_ORANGE);
+
+MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisBinned, "Frontend/TrisBinned");
+MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisClipped, "Frontend/TrisClipped");
+
 namespace sr
 {
 
@@ -280,6 +288,8 @@ static void BinTransformedAndClippedTri
 	DrawCall const& _call
 )
 {
+	MICROPROFILE_COUNTER_LOCAL_ADD_ATOMIC(TrisBinned, 1);
+
 	uint32_t const height = _call.m_frameBuffer->m_height;
 	uint32_t const width = _call.m_frameBuffer->m_width;
 	kt::Vec2 const halfScreenCoords = kt::Vec2((float)width, (float)height) * 0.5f;
@@ -447,6 +457,7 @@ static void BinTransformedAndClippedTri
 
 void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _threadIdx, uint32_t _triIdxBegin, uint32_t _triIdxEnd, DrawCall const& _drawCall)
 {
+	MICROPROFILE_SCOPE(BinTriBatch);
 	for (uint32_t triIdx = _triIdxBegin; triIdx < _triIdxEnd; ++triIdx)
 	{
 		KT_ASSERT(triIdx < _drawCall.m_indexBuffer.m_num);
@@ -495,12 +506,16 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 		buf.verts[buf.inputIdx][1] = vtx[1];
 		buf.verts[buf.inputIdx][2] = vtx[2];
 
-		do
 		{
-			uint32_t clipIdx = kt::Cnttz(maskOr);
-			maskOr ^= (1 << clipIdx);
-			ClipPlane(buf, clipIdx);
-		} while (maskOr && buf.numInputVerts);
+			MICROPROFILE_COUNTER_LOCAL_ADD_ATOMIC(TrisClipped, 1);
+			do
+			{
+				uint32_t clipIdx = kt::Cnttz(maskOr);
+				maskOr ^= (1 << clipIdx);
+				ClipPlane(buf, clipIdx);
+			} while (maskOr && buf.numInputVerts);
+		}
+
 
 		// Fan triangulation
 		kt::Vec4(&input_vec)[CLIP_VERT_BUFFER_SIZE] = buf.verts[buf.inputIdx];

@@ -5,11 +5,15 @@
 
 #include "microprofile.h"
 
-MICROPROFILE_DEFINE(SubmitDrawCalls, "Frame", "SubmitDrawCalls", MP_BLUE);
-MICROPROFILE_DEFINE(SetupFrontend, "Frame", "SetupFrontend", MP_BLUE1);
-MICROPROFILE_DEFINE(WaitForFrontend, "Frame", "WaitForFrontend", MP_BLUE2);
-MICROPROFILE_DEFINE(SetupBackend, "Frame", "SetupBackend", MP_BLUE3);
-MICROPROFILE_DEFINE(WaitForBackend, "Frame", "WaitForBackend", MP_BLUE4);
+MICROPROFILE_DEFINE(SubmitDrawCalls, "Frame", "SubmitDrawCalls", MP_STEELBLUE);
+MICROPROFILE_DEFINE(SetupFrontend, "Frame", "SetupFrontend", MP_STEELBLUE1);
+MICROPROFILE_DEFINE(WaitForFrontend, "Frame", "WaitForFrontend", MP_STEELBLUE2);
+MICROPROFILE_DEFINE(SetupBackend, "Frame", "SetupBackend", MP_STEELBLUE3);
+MICROPROFILE_DEFINE(WaitForBackend, "Frame", "WaitForBackend", MP_STEELBLUE4);
+
+MICROPROFILE_DEFINE(ClearFrameBuffer, "Frame", "ClearFrameBuffer", MP_DEEPSKYBLUE);
+
+MICROPROFILE_DEFINE(Blit, "Frame", "Blit", MP_ROYALBLUE);
 
 
 namespace sr
@@ -159,6 +163,7 @@ void RenderContext::DrawIndexed(DrawCall const& _call)
 
 void RenderContext::ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color, bool _clearColour /*= true*/, bool _clearDepth /*= true*/)
 {
+	MICROPROFILE_SCOPE(ClearFrameBuffer);
 
 	KT_ASSERT(_buffer.m_jobs[_buffer.m_writePlane].m_counter.load() == 0);
 
@@ -303,6 +308,7 @@ void RenderContext::EndFrame()
 
 static void BlitJobFn(FrameBuffer::JobData const& _job)
 {
+	MICROPROFILE_SCOPE(Blit);
 	FrameBufferPlane const& plane = *_job.m_plane;
 	uint32_t* fb32 = (uint32_t*)_job.m_linearPixels;
 	for (uint32_t tileY = 0; tileY < plane.m_tilesY; ++tileY)
