@@ -4,6 +4,8 @@
 #include "TaskSystem.h"
 #include "kt/Strings.h"
 
+#include "microprofile.h"
+
 thread_local uint32_t tls_threadIndex;
 
 namespace sr
@@ -53,6 +55,7 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		std::atomic<uint32_t>* initCounter;
 		uint32_t threadId;
 		TaskSystem* sys;
+		char const* name;
 	};
 
 	ThreadInitData* initData = (ThreadInitData*)KT_ALLOCA(sizeof(ThreadInitData) * _numWorkers);
@@ -70,12 +73,14 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 		data.threadId = i + 1;
 		data.sys = this;
 		data.initCounter = &initCounter;
+		data.name = threadNames[i].Data();
 
 		t.Run([](kt::Thread* _self) 
 		{ 
 			ThreadInitData* data = (ThreadInitData*)_self->GetUserData();
 			TaskSystem* sys = data->sys;
 			tls_threadIndex = data->threadId;
+			MicroProfileOnThreadCreate(data->name);
 			std::atomic_fetch_sub_explicit(data->initCounter, 1, std::memory_order_acquire);
 			sys->WorkerLoop(data->threadId);
 		}, 
@@ -165,7 +170,16 @@ void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 {
 	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
 	{
-		TryRunOnePacket_NoLock();
+		if (!TryRunOnePacket_NoLock())
+		{
+			break;
+		}
+	}
+
+	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
+	{
+		// dumb spin
+		_mm_pause();
 	}
 }
 
@@ -193,7 +207,10 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 {
 	while (std::atomic_load_explicit(&m_keepRunning, std::memory_order_acquire))
 	{
-		m_queueSignal.Wait();
+		{
+			MICROPROFILE_SCOPEI("TaskSystem", "IDLE", MP_RED);
+			m_queueSignal.Wait();
+		}
 
 		std::atomic_fetch_add_explicit(&m_numActiveWorkers, 1, std::memory_order_acquire);
 

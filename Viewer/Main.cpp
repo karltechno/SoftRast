@@ -12,6 +12,7 @@
 #include "Config.h"
 #include "Shaders.h"
 #include "Scene.h"
+#include "microprofile.h"
 
 void DiffuseTest(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
@@ -132,6 +133,10 @@ int main(int argc, char** argv)
 	sr::RenderContext renderCtx;
 	sr::FrameBuffer framebuffer(sr::Config::c_screenWidth, sr::Config::c_screenHeight);
 
+	MicroProfileOnThreadCreate("Main");
+	MicroProfileSetEnableAllGroups(true);
+	MicroProfileSetForceMetaCounters(true);
+	
 	while (!window.WantsQuit())
 	{
 		window.PumpMessageLoop();
@@ -164,9 +169,14 @@ int main(int argc, char** argv)
 		{
 			KT_LOG_INFO("Frame took: %.3fms", frameTime.Milliseconds());
 		}
+
+		MicroProfileFlip(0);
 	}
 
 	delete scene;
 	sr::input::Shutdown();
+
+	MicroProfileShutdown();
+
 	return 1;
 }

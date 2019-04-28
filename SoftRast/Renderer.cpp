@@ -3,6 +3,15 @@
 #include "kt/Memory.h"
 #include "kt/Logging.h"
 
+#include "microprofile.h"
+
+MICROPROFILE_DEFINE(SubmitDrawCalls, "Frame", "SubmitDrawCalls", MP_BLUE);
+MICROPROFILE_DEFINE(SetupFrontend, "Frame", "SetupFrontend", MP_BLUE1);
+MICROPROFILE_DEFINE(WaitForFrontend, "Frame", "WaitForFrontend", MP_BLUE2);
+MICROPROFILE_DEFINE(SetupBackend, "Frame", "SetupBackend", MP_BLUE3);
+MICROPROFILE_DEFINE(WaitForBackend, "Frame", "WaitForBackend", MP_BLUE4);
+
+
 namespace sr
 {
 
@@ -184,94 +193,112 @@ void RenderContext::BeginFrame()
 {
 	m_drawCalls.Clear();
 	m_taskSystem.ResetAllocators();
+
+	MICROPROFILE_ENTER(SubmitDrawCalls);
 }
 
 void RenderContext::EndFrame()
 {
-	for (uint32_t i = 0; i < m_binner.m_numBinsX * m_binner.m_numBinsY * m_binner.m_numThreads; ++i)
-	{
-		// todo frame number dirty
-		m_binner.m_bins[i].Reset();
-	}
-
-	struct BinTrisTaskData
-	{
-		DrawCall const* call;
-		RenderContext* ctx;
-	};
-
-	Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
-	BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
+	MICROPROFILE_LEAVE();
 
 	std::atomic<uint32_t> frontEndCounter(0);
 
-	for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 	{
-		DrawCall const& draw = m_drawCalls[i];
-
-		auto drawCallTaskFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
+		MICROPROFILE_SCOPE(SetupFrontend);
+		for (uint32_t i = 0; i < m_binner.m_numBinsX * m_binner.m_numBinsY * m_binner.m_numThreads; ++i)
 		{
-			BinTrisTaskData* data = (BinTrisTaskData*)_task->m_userData;
-			BinTrisEntry(data->ctx->m_binner, data->ctx->ThreadAllocator(), _threadIdx, _start, _end, *data->call);
+			// todo frame number dirty
+			m_binner.m_bins[i].Reset();
+		}
+
+		struct BinTrisTaskData
+		{
+			DrawCall const* call;
+			RenderContext* ctx;
 		};
 
-		BinTrisTaskData* taskData = drawCallTasksData + i;
+		Task* drawCallTasks = (Task*)KT_ALLOCA(sizeof(Task) * m_drawCalls.Size());
+		BinTrisTaskData* drawCallTasksData = (BinTrisTaskData*)KT_ALLOCA(sizeof(BinTrisTaskData) * m_drawCalls.Size());
 
-		Task* task = drawCallTasks + i;
 
-		kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData, &frontEndCounter);
-		taskData->call = &draw;
-		taskData->ctx = this;
-
-		m_taskSystem.PushTask(task);
-	}
-
-	m_taskSystem.WaitForCounter(&frontEndCounter);
-
-	std::atomic<uint32_t> tileRasterCounter{ 0 };
-
-	for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
-	{
-		for (uint32_t binX = 0; binX < m_binner.m_numBinsX; ++binX)
+		for (uint32_t i = 0; i < m_drawCalls.Size(); ++i)
 		{
-			bool anyTris = false;
-			for (uint32_t threadIdx = 0; threadIdx < m_binner.m_numThreads; ++threadIdx)
+			DrawCall const& draw = m_drawCalls[i];
+
+			auto drawCallTaskFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
 			{
-				ThreadBin& bin = m_binner.LookupThreadBin(threadIdx, binX, binY);
-				anyTris |= bin.m_numChunks != 0;
-			}
+				BinTrisTaskData* data = (BinTrisTaskData*)_task->m_userData;
+				BinTrisEntry(data->ctx->m_binner, data->ctx->ThreadAllocator(), _threadIdx, _start, _end, *data->call);
+			};
 
-			if (anyTris)
-			{
-				struct TileTaskData
-				{
-					Task t;
-					ThreadRasterCtx rasterCtx;
-				};
+			BinTrisTaskData* taskData = drawCallTasksData + i;
 
-				auto tileRasterFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
-				{
-					TileTaskData* data = (TileTaskData*)_task->m_userData;
-					RasterAndShadeBin(data->rasterCtx);
-				};
+			Task* task = drawCallTasks + i;
 
-				TileTaskData* t = (TileTaskData*)KT_ALLOCA(sizeof(TileTaskData));
-				t->rasterCtx.m_binner = &m_binner;
-				t->rasterCtx.m_tileX = binX;
-				t->rasterCtx.m_tileY = binY;
-				t->rasterCtx.m_drawCalls = m_drawCalls.Data();
-				t->rasterCtx.m_numDrawCalls = m_drawCalls.Size();
-				t->rasterCtx.m_ctx = this;
-				kt::PlacementNew(&t->t, tileRasterFn, 1, 1, t);
+			kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData, &frontEndCounter);
+			taskData->call = &draw;
+			taskData->ctx = this;
 
-				t->t.m_taskCounter = &tileRasterCounter;
-				m_taskSystem.PushTask(&t->t);
-			}
-
+			m_taskSystem.PushTask(task);
 		}
 	}
 
-	m_taskSystem.WaitForCounter(&tileRasterCounter);
+	{
+		MICROPROFILE_SCOPE(WaitForFrontend);
+		m_taskSystem.WaitForCounter(&frontEndCounter);
+	}
+
+	std::atomic<uint32_t> tileRasterCounter{ 0 };
+
+	{
+		MICROPROFILE_SCOPE(SetupBackend);
+		for (uint32_t binY = 0; binY < m_binner.m_numBinsY; ++binY)
+		{
+			for (uint32_t binX = 0; binX < m_binner.m_numBinsX; ++binX)
+			{
+				bool anyTris = false;
+				for (uint32_t threadIdx = 0; threadIdx < m_binner.m_numThreads; ++threadIdx)
+				{
+					ThreadBin& bin = m_binner.LookupThreadBin(threadIdx, binX, binY);
+					anyTris |= bin.m_numChunks != 0;
+				}
+
+				if (anyTris)
+				{
+					struct TileTaskData
+					{
+						Task t;
+						ThreadRasterCtx rasterCtx;
+					};
+
+					auto tileRasterFn = [](Task const* _task, uint32_t _threadIdx, uint32_t _start, uint32_t _end)
+					{
+						TileTaskData* data = (TileTaskData*)_task->m_userData;
+						RasterAndShadeBin(data->rasterCtx);
+					};
+
+					TileTaskData* t = (TileTaskData*)KT_ALLOCA(sizeof(TileTaskData));
+					t->rasterCtx.m_binner = &m_binner;
+					t->rasterCtx.m_tileX = binX;
+					t->rasterCtx.m_tileY = binY;
+					t->rasterCtx.m_drawCalls = m_drawCalls.Data();
+					t->rasterCtx.m_numDrawCalls = m_drawCalls.Size();
+					t->rasterCtx.m_ctx = this;
+					kt::PlacementNew(&t->t, tileRasterFn, 1, 1, t);
+
+					t->t.m_taskCounter = &tileRasterCounter;
+					m_taskSystem.PushTask(&t->t);
+				}
+
+			}
+		}
+	}
+
+
+	{
+		MICROPROFILE_SCOPE(WaitForBackend);
+		m_taskSystem.WaitForCounter(&tileRasterCounter);
+	}
 }
 
 static void BlitJobFn(FrameBuffer::JobData const& _job)
