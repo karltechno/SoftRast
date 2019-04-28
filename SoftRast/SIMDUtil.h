@@ -93,12 +93,12 @@ KT_FORCEINLINE void RGBA32SoA_To_RGBA8AoS(__m256 _r, __m256 _g, __m256 _b, __m25
 	__m256i const gi32 = _mm256_cvtps_epi32(_mm256_fmadd_ps(_g, mul, add));
 	__m256i const bi32 = _mm256_cvtps_epi32(_mm256_fmadd_ps(_b, mul, add));
 	__m256i const ai32 = _mm256_cvtps_epi32(_mm256_fmadd_ps(_a, mul, add));
-	
+
 	__m128i const r16 = _mm_packus_epi32(_mm256_castsi256_si128(ri32), _mm256_extractf128_si256(ri32, 1));
 	__m128i const g16 = _mm_packus_epi32(_mm256_castsi256_si128(gi32), _mm256_extractf128_si256(gi32, 1));
 	__m128i const b16 = _mm_packus_epi32(_mm256_castsi256_si128(bi32), _mm256_extractf128_si256(bi32, 1));
 	__m128i const a16 = _mm_packus_epi32(_mm256_castsi256_si128(ai32), _mm256_extractf128_si256(ai32, 1));
-	
+
 
 	// rrrrrrrrbbbbbbbb
 	__m128i const r8b8 = _mm_packus_epi16(r16, b16);
@@ -118,6 +118,30 @@ KT_FORCEINLINE void RGBA32SoA_To_RGBA8AoS(__m256 _r, __m256 _g, __m256 _b, __m25
 
 	_mm_store_si128(texelStoreLo, rgba_lo);
 	_mm_store_si128(texelStoreHi, rgba_hi);
+}
+
+KT_FORCEINLINE __m256 Dot3SoA(__m256 _x0, __m256 _y0, __m256 _z0, __m256 _x1, __m256 _y1, __m256 _z1)
+{
+	return _mm256_fmadd_ps(_x0, _x1, _mm256_fmadd_ps(_y0, _y1, _mm256_mul_ps(_z0, _z1)));
+}
+
+
+// fmadd = a*b+c 
+// fnmadd = -(a*b)+c
+
+// (t * b) + (-(t * a) + a)
+// = t * b + a - (t * a) 
+// = t * b + a * (1 - t)
+
+KT_FORCEINLINE __m256 Lerp(__m256 _a, __m256 _b, __m256 _t)
+{
+	return _mm256_fmadd_ps(_t, _b, _mm256_fnmadd_ps(_t, _a, _a));
+}
+
+KT_FORCEINLINE __m128 Lerp(__m128 _a, __m128 _b, __m128 _t)
+{
+
+	return _mm_fmadd_ps(_t, _b, _mm_fnmadd_ps(_t, _a, _a));
 }
 
 }

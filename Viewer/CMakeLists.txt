@@ -12,7 +12,13 @@ set(VIEWER_FILES
     "Camera.cpp"
     "Input.h"
     "Input.cpp"
+    "Scene.h"
+    "Scene.cpp"
+    "Shaders.h"
+    "SponzaScene.h"
+    "SponzaScene.cpp"
 )
+
 
 file(COPY "Models/" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/Models")
 

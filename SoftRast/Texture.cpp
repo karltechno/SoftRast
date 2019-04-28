@@ -338,9 +338,9 @@ static void GatherQuadsAndInterpolate
 
 		__m128 const interpU_broadcast = _mm_broadcast_ss(_interpU + i);
 		__m128 const interpV_broadcast = _mm_broadcast_ss(_interpV + i);
-		__m128 const left = _mm_fmadd_ps(interpV_broadcast, x0y1_tex, _mm_fnmadd_ps(interpV_broadcast, x0y0_tex, x0y0_tex));
-		__m128 const right = _mm_fmadd_ps(interpV_broadcast, x1y1_tex, _mm_fnmadd_ps(interpV_broadcast, x1y0_tex, x1y0_tex));
-		__m128 const finalInterp = _mm_fmadd_ps(interpU_broadcast, right, _mm_fnmadd_ps(interpU_broadcast, left, left));
+		__m128 const left = simdutil::Lerp(x0y0_tex, x0y1_tex, interpV_broadcast);
+		__m128 const right = simdutil::Lerp(x1y0_tex, x1y1_tex, interpV_broadcast);
+		__m128 const finalInterp = simdutil::Lerp(left, right, interpU_broadcast);
 
 		// See above comment.
 		uint32_t const writeIdx = i >= 4 ? (i & 3) * 8 + 4 : i * 8;

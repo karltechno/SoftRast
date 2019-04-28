@@ -68,7 +68,7 @@ KT_FORCEINLINE OBJVaryings UnpackOBJVaryings(float const* _varyings)
 	return ret;
 }
 
-static void UnlitDiffuseShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
+KT_FORCEINLINE void UnlitDiffuseShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 
@@ -90,7 +90,7 @@ static void UnlitDiffuseShader(void const* _uniforms, float const* _varyings, ui
 	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
 
-static void VisualizeNormalsShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
+KT_FORCEINLINE void VisualizeNormalsShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
 	OBJVaryings const objVaryings = UnpackOBJVaryings(_varyings);
 
@@ -102,7 +102,6 @@ static void VisualizeNormalsShader(void const* _uniforms, float const* _varyings
 	__m256 const a = _mm256_set1_ps(1.0f);
 	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
-
 
 }
 

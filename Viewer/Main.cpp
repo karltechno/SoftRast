@@ -12,7 +12,11 @@
 #include "Config.h"
 #include "Shaders.h"
 #include "Scene.h"
+#include "SponzaScene.h"
+
 #include "microprofile.h"
+
+
 
 void DiffuseTest(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
 {
@@ -122,7 +126,7 @@ int main(int argc, char** argv)
 	//scene = new sr::SimpleModelScene("Models/dragon.obj", sr::Obj::LoadFlags::FlipWinding);
 	//scene = new sr::SimpleModelScene("Models/bunny.obj", sr::Obj::LoadFlags::FlipWinding);
 	//scene = new sr::SimpleModelScene("Models/cube/cube.obj", sr::Obj::LoadFlags::FlipWinding);
-	scene = new sr::SimpleModelScene("Models/sponza-crytek/sponza.obj", sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
+	scene = new sr::SponzaScene("Models/sponza-crytek/sponza.obj", sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 	//scene = new sr::SimpleModelScene("Models/teapot/teapot.obj", sr::Obj::LoadFlags::FlipWinding);
 	//scene = new sr::SimpleModelScene("Models/lost_empire/lost_empire.obj", sr::Obj::LoadFlags::FlipWinding | sr::Obj::LoadFlags::FlipUVs);
 
@@ -136,7 +140,9 @@ int main(int argc, char** argv)
 	MicroProfileOnThreadCreate("Main");
 	MicroProfileSetEnableAllGroups(true);
 	MicroProfileSetForceMetaCounters(true);
+	MicroProfileStartContextSwitchTrace();
 	
+
 	while (!window.WantsQuit())
 	{
 		window.PumpMessageLoop();
