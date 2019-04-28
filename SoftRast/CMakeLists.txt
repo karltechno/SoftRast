@@ -21,5 +21,5 @@ set(SOFT_RAST_FILES
 )
 
 add_library(SoftRast ${SOFT_RAST_FILES})
-target_link_libraries(SoftRast kt)
+target_link_libraries(SoftRast kt microprofile)
 target_include_directories(SoftRast PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
