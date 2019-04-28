@@ -19,14 +19,13 @@ struct Task
 	Task() = default;
 
 	Task(TaskFn _fn, uint32_t _numPartitions, uint32_t _granularity, void* _user, std::atomic<uint32_t>* _counter = nullptr)
-		: m_fn(_fn), m_granularity(_granularity),  m_numCompletedPartitions(0), m_totalPartitions(_numPartitions),  m_taskCounter(_counter), m_userData(_user)
+		: m_fn(_fn), m_granularity(_granularity), m_totalPartitions(_numPartitions),  m_taskCounter(_counter), m_userData(_user)
 	{}
 
 	void Set(TaskFn _fn, uint32_t _numPartitions, uint32_t _granularity, void* _user, std::atomic<uint32_t>* _counter = nullptr)
 	{
 		KT_ASSERT(!m_taskCounter || m_taskCounter->load() == 0);
 		m_fn = _fn;
-		m_numCompletedPartitions = _numPartitions;
 		m_granularity = _granularity;
 		m_userData = _user;
 		m_taskCounter = _counter;
@@ -38,9 +37,6 @@ struct Task
 
 	// Iterations per task
 	uint32_t m_granularity = 0;
-
-	// Number of partitions done
-	std::atomic<uint32_t> m_numCompletedPartitions;
 
 	// Total partitions.
 	uint32_t m_totalPartitions = 0;

@@ -168,14 +168,19 @@ void TaskSystem::SyncAndWaitForAll()
 
 void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 {
-	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
+	for(;;)
 	{
+		if (std::atomic_load_explicit(_counter, std::memory_order_acquire) == 0)
+		{
+			return;
+		}
 		if (!TryRunOnePacket_NoLock())
 		{
 			break;
 		}
 	}
 
+	MICROPROFILE_SCOPEI("TaskSystem", "IDLE WAIT FOR COUNTER", MP_RED);
 	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
 	{
 		// dumb spin
@@ -243,11 +248,6 @@ bool TaskSystem::TryRunOnePacket_NoLock()
 		if (packet.m_task->m_taskCounter)
 		{
 			std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
-		}
-
-		if (std::atomic_fetch_sub_explicit(&packet.m_task->m_numCompletedPartitions, 1, std::memory_order_release) == 0)
-		{
-			// do anything?
 		}
 	}
 
