@@ -304,6 +304,8 @@ void RenderContext::EndFrame()
 		MICROPROFILE_SCOPE(WaitForBackend);
 		m_taskSystem.WaitForCounter(&tileRasterCounter);
 	}
+
+	BinContext::MicroprofileUpdateCounters();
 }
 
 static void BlitJobFn(FrameBuffer::JobData const& _job)
@@ -357,7 +359,6 @@ void RenderContext::Blit(FrameBuffer& _fb, uint8_t* _linearPixels, void(*_onFini
 	_fb.m_jobs[idx].m_task.Set(taskFN, 1, 1, &_fb.m_jobs[idx], &_fb.m_jobs[idx].m_counter);
 
 	_fb.SwapPlanes();
-
 
 	m_taskSystem.PushTask(&_fb.m_jobs[idx].m_task);
 }

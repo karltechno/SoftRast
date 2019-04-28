@@ -9,8 +9,8 @@
 
 MICROPROFILE_DEFINE(BinTriBatch, "Frontend", "BinTriBatch", MP_ORANGE);
 
-MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisBinned, "Frontend/TrisBinned");
-MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisClipped, "Frontend/TrisClipped");
+MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisBinned, "/Frontend/TrisBinned");
+MICROPROFILE_DEFINE_LOCAL_ATOMIC_COUNTER(TrisClipped, "/Frontend/TrisClipped");
 
 namespace sr
 {
@@ -453,6 +453,12 @@ static void BinTransformedAndClippedTri
 			}
 		}
 	}
+}
+
+void BinContext::MicroprofileUpdateCounters()
+{
+	MICROPROFILE_COUNTER_LOCAL_UPDATE_SET_ATOMIC(TrisBinned);
+	MICROPROFILE_COUNTER_LOCAL_UPDATE_SET_ATOMIC(TrisClipped);
 }
 
 void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _threadIdx, uint32_t _triIdxBegin, uint32_t _triIdxEnd, DrawCall const& _drawCall)

@@ -68,6 +68,8 @@ struct ThreadBin
 
 struct BinContext
 {
+	static void MicroprofileUpdateCounters();
+
 	~BinContext();
 
 	void Init(uint32_t _numThreads, uint32_t _binsX, uint32_t _binsY);
