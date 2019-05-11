@@ -288,8 +288,6 @@ static void BinTransformedAndClippedTri
 	DrawCall const& _call
 )
 {
-	MICROPROFILE_COUNTER_LOCAL_ADD_ATOMIC(TrisBinned, 1);
-
 	uint32_t const height = _call.m_frameBuffer->m_height;
 	uint32_t const width = _call.m_frameBuffer->m_width;
 	kt::Vec2 const halfScreenCoords = kt::Vec2((float)width, (float)height) * 0.5f;
@@ -311,6 +309,8 @@ static void BinTransformedAndClippedTri
 	{
 		return;
 	}
+
+	MICROPROFILE_COUNTER_LOCAL_ADD_ATOMIC(TrisBinned, 1);
 
 	uint32_t xmin, ymin;
 	uint32_t xmax, ymax;
