@@ -24,7 +24,7 @@ constexpr int32_t c_subPixelBits = 8;
 constexpr int32_t c_subPixelStep = 1 << c_subPixelBits;
 constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
 
-constexpr uint32_t c_maxVaryings = 16;
+constexpr uint32_t c_maxVaryings = 8;
 
 constexpr uint32_t c_simdWidth = 8;
 
