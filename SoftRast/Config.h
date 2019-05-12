@@ -26,9 +26,8 @@ constexpr int32_t c_subPixelMask = c_subPixelStep - 1;
 
 constexpr uint32_t c_maxVaryings = 8;
 
-constexpr uint32_t c_simdWidth = 8;
-
 constexpr uint32_t c_maxTexDimLog2 = 14; // 16k
+
 
 #if SR_USE_REVERSE_Z
 constexpr float c_depthMin = 1.0f;
