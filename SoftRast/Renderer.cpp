@@ -240,7 +240,7 @@ void RenderContext::EndFrame()
 
 			Task* task = drawCallTasks + i;
 
-			kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 512, taskData, &frontEndCounter);
+			kt::PlacementNew(task, drawCallTaskFn, draw.m_indexBuffer.m_num / 3, 2048, taskData, &frontEndCounter);
 			taskData->call = &draw;
 			taskData->ctx = this;
 
