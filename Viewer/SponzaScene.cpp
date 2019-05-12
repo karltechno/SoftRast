@@ -52,6 +52,7 @@ static void SponzaShader(void const* _uniforms, float const* _varyings, uint32_t
 		__m256 const distSq = simdutil::Dot3SoA(pToL_x, pToL_y, pToL_z, pToL_x, pToL_y, pToL_z);
 		__m256 const dist = _mm256_sqrt_ps(distSq);
 		__m256 const recipDist = _mm256_rcp_ps(dist);
+	
 		
 		__m256 const l_x = _mm256_mul_ps(pToL_x, recipDist);
 		__m256 const l_y = _mm256_mul_ps(pToL_y, recipDist);
@@ -60,8 +61,6 @@ static void SponzaShader(void const* _uniforms, float const* _varyings, uint32_t
 		__m256 const nDotL = _mm256_max_ps(_mm256_setzero_ps(), simdutil::Dot3SoA(l_x, l_y, l_z, objVaryings.norm_x, objVaryings.norm_y, objVaryings.norm_z));
 
 		__m256 const one = _mm256_set1_ps(1.0f);
-
-		// Inverse square law
 		
 		__m256 const atten = _mm256_rcp_ps(_mm256_add_ps(one, _mm256_fmadd_ps(_mm256_set1_ps(0.1f), dist, _mm256_mul_ps(distSq, _mm256_set1_ps(0.01f)))));
 		__m256 const lightRadiance = _mm256_mul_ps(nDotL, _mm256_mul_ps(_mm256_broadcast_ss(&light.m_intensity), atten));
@@ -127,21 +126,24 @@ void SponzaScene::Init(uint32_t _screenHeight, uint32_t _screenWidth)
 
 	kt::XorShift32 rng;
 
-	for (PointLight& light : g_constants.m_pointLights)
+	for (uint32_t i = 0; i < Constants::c_numPointLights; ++i)
 	{
-		light.m_colourA = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
-		light.m_colourB = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
+		PointLight& light = g_constants.m_pointLights[i];
+		PointLightAnim& anim = g_constants.m_pointLightAnim[i];
+
+		anim.m_colourA = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
+		anim.m_colourB = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
 	
-		light.m_basePos.x = kt::Lerp(-1000.0f, 1000.0f, kt::RandomUnitFloat(rng));
-		light.m_basePos.y = kt::Lerp(50.0f, 250.0f, kt::RandomUnitFloat(rng));
-		light.m_basePos.z = kt::Lerp(-150.0f, 150.0f, kt::RandomUnitFloat(rng));
+		anim.m_basePos.x = kt::Lerp(-1000.0f, 1000.0f, kt::RandomUnitFloat(rng));
+		anim.m_basePos.y = kt::Lerp(50.0f, 250.0f, kt::RandomUnitFloat(rng));
+		anim.m_basePos.z = kt::Lerp(-150.0f, 150.0f, kt::RandomUnitFloat(rng));
 
 		light.m_falloff = kt::Lerp(500.0f, 2500.0f, kt::RandomUnitFloat(rng));
 		light.m_intensity = kt::Lerp(150.0f, 350.0f, kt::RandomUnitFloat(rng));
 
-		light.m_rotAxis = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
-		light.m_rotAxis = kt::Normalize(light.m_rotAxis * 2.0f - kt::Vec3(1.0f));
-		light.m_rotOffset = 25.0f * (kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng)) * 2.0f - kt::Vec3(1.0f));
+		anim.m_rotAxis = kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng));
+		anim.m_rotAxis = kt::Normalize(anim.m_rotAxis * 2.0f - kt::Vec3(1.0f));
+		anim.m_rotOffset = 25.0f * (kt::Vec3(kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng), kt::RandomUnitFloat(rng)) * 2.0f - kt::Vec3(1.0f)) + kt::Vec3(5.0f);
 	}
 }
 
@@ -154,18 +156,21 @@ void SponzaScene::Update(RenderContext& _ctx, FrameBuffer& _fb, float _dt)
 	
 	m_animPhase += _dt;
 
-	for (PointLight& pointLight : g_constants.m_pointLights)
+	for (uint32_t i = 0; i < Constants::c_numPointLights; ++i)
 	{
-		pointLight.m_colour = kt::Lerp(pointLight.m_colourA, pointLight.m_colourB, sinT);
+		PointLight& light = g_constants.m_pointLights[i];
+		PointLightAnim& anim = g_constants.m_pointLightAnim[i];
+
+		light.m_colour = kt::Lerp(anim.m_colourA, anim.m_colourB, sinT);
 
 		kt::Quat rot; 
-		rot.FromNormalizedAxisAngle(pointLight.m_rotAxis, pointLight.m_angle);
+		rot.FromNormalizedAxisAngle(anim.m_rotAxis, anim.m_angle);
 
-		kt::Vec3 pos = pointLight.m_basePos - pointLight.m_rotOffset;
+		kt::Vec3 pos = anim.m_basePos - anim.m_rotOffset;
 		pos = kt::Mul(rot, pos);
-		pointLight.m_pos = pos + pointLight.m_rotOffset;
+		light.m_pos = pos + anim.m_rotOffset;
 
-		pointLight.m_angle += _dt;
+		anim.m_angle += _dt;
 	}
 
 	for (sr::Obj::Mesh const& mesh : m_model.m_meshes)

@@ -19,7 +19,10 @@ struct SponzaScene : Scene
 		kt::Vec3 m_colour;
 		float m_intensity;
 		float m_falloff;
+	};
 
+	struct PointLightAnim
+	{
 		// Anim:
 		kt::Vec3 m_basePos;
 		kt::Vec3 m_rotOffset;
@@ -32,13 +35,14 @@ struct SponzaScene : Scene
 
 	struct Constants
 	{
-		static uint32_t constexpr c_numPointLights = 20;
+		static uint32_t constexpr c_numPointLights = 16;
 
 		__m256 m_sunDir[3];
 		__m256 m_ambCol[3];
 
 
 		PointLight m_pointLights[c_numPointLights];
+		PointLightAnim m_pointLightAnim[c_numPointLights];
 	};
 
 	sr::Obj::Model m_model;
