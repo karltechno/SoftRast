@@ -295,9 +295,11 @@ static bool ComputeInterpolantsDrawCallImpl
 {
 	uint32_t const drawCallIdx = _chunk.m_drawCallIdx;
 	uint32_t const chunkIdx = io_frag->chunkIdx;
-	uint32_t const packedTriChunkIdx = io_frag->packedChunkTriIdx;
+
 	do
 	{
+		uint32_t const packedTriChunkIdx = io_frag->packedChunkTriIdx;
+
 		__m256 attribPlaneDx[NumAttribsAVXNoDerivT];
 		__m256 attribPlaneDy[NumAttribsAVXNoDerivT];
 		__m256 attribPlaneC[NumAttribsAVXNoDerivT];
