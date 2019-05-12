@@ -1,7 +1,7 @@
 # SoftRast
 Hobby software rasterizer, requires a CPU with AVX2/FMA.
 
-![Crytek Sponza](https://i.imgur.com/5z5ISe5.jpg)
+![Crytek Sponza](https://i.imgur.com/CE8z2bV.jpg)
 
 The goal of the project is to learn more about the graphics pipeline, software rendering and SIMD programming. 
 
