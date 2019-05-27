@@ -36,6 +36,25 @@ struct DepthTile
 	float m_hiZmax;
 };
 
+struct Interpolants
+{
+	union
+	{
+		float* m_derivs[4];
+
+		struct  
+		{
+			float* m_dudx;
+			float* m_dudy;
+			float* m_dvdx;
+			float* m_dvdy;
+		};
+	};
+
+	
+	float* m_varyings[Config::c_maxVaryings];
+};
+
 struct FrameBufferPlane
 {
 	FrameBufferPlane() = default;
@@ -88,7 +107,7 @@ struct FrameBuffer
 	} m_jobs[2];
 };
 
-using PixelShaderFn = void(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask);
+using PixelShaderFn = void(void const* _uniforms, Interpolants const& _interpolants, uint32_t o_texels[8], uint32_t _execMask);
 
 struct GenericDrawBuffer
 {

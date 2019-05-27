@@ -68,7 +68,7 @@ KT_FORCEINLINE OBJVaryings UnpackOBJVaryings(float const* _varyings)
 	return ret;
 }
 
-KT_FORCEINLINE void UnlitDiffuseShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
+KT_FORCEINLINE void UnlitDiffuseShader(void const* _uniforms, Interpolants const& _interpolants, uint32_t o_texels[8], uint32_t _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 
@@ -78,8 +78,21 @@ KT_FORCEINLINE void UnlitDiffuseShader(void const* _uniforms, float const* _vary
 		return;
 	}
 
-	OBJVaryings const objVaryings = UnpackOBJVaryings(_varyings);
-	Derivatives const derivs = UnpackDerivatives(_varyings);
+	OBJVaryings objVaryings;
+	Derivatives derivs;
+	objVaryings.pos_x = _mm256_loadu_ps(_interpolants.m_varyings[0]);
+	objVaryings.pos_y = _mm256_loadu_ps(_interpolants.m_varyings[1]);
+	objVaryings.pos_z = _mm256_loadu_ps(_interpolants.m_varyings[2]);
+	objVaryings.norm_x = _mm256_loadu_ps(_interpolants.m_varyings[3]);
+	objVaryings.norm_y = _mm256_loadu_ps(_interpolants.m_varyings[4]);
+	objVaryings.norm_z = _mm256_loadu_ps(_interpolants.m_varyings[5]);
+	objVaryings.u = _mm256_loadu_ps(_interpolants.m_varyings[6]);
+	objVaryings.v = _mm256_loadu_ps(_interpolants.m_varyings[7]);
+
+	derivs.dudx = _mm256_loadu_ps(_interpolants.m_dudx);
+	derivs.dudy = _mm256_loadu_ps(_interpolants.m_dudy);
+	derivs.dvdx = _mm256_loadu_ps(_interpolants.m_dvdx);
+	derivs.dvdy = _mm256_loadu_ps(_interpolants.m_dvdy);
 
 	__m256 r;
 	__m256 g;
@@ -90,9 +103,13 @@ KT_FORCEINLINE void UnlitDiffuseShader(void const* _uniforms, float const* _vary
 	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
 
-KT_FORCEINLINE void VisualizeNormalsShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
+KT_FORCEINLINE void VisualizeNormalsShader(void const* _uniforms, Interpolants const& _interpolants, uint32_t o_texels[8], uint32_t _execMask)
 {
-	OBJVaryings const objVaryings = UnpackOBJVaryings(_varyings);
+	OBJVaryings objVaryings;
+
+	objVaryings.norm_x = _mm256_loadu_ps(_interpolants.m_varyings[3]);
+	objVaryings.norm_y = _mm256_loadu_ps(_interpolants.m_varyings[4]);
+	objVaryings.norm_z = _mm256_loadu_ps(_interpolants.m_varyings[5]);
 
 	__m256 const mulAndAdd = _mm256_set1_ps(0.5f);
 
@@ -100,6 +117,15 @@ KT_FORCEINLINE void VisualizeNormalsShader(void const* _uniforms, float const* _
 	__m256 const g = _mm256_fmadd_ps(objVaryings.norm_y, mulAndAdd, mulAndAdd);
 	__m256 const b = _mm256_fmadd_ps(objVaryings.norm_z, mulAndAdd, mulAndAdd);
 	__m256 const a = _mm256_set1_ps(1.0f);
+	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
+}
+
+KT_FORCEINLINE void VisualizeUVsShader(void const* _uniforms, Interpolants const& _interpolants, uint32_t o_texels[8], uint32_t _execMask)
+{
+	__m256 const r = _mm256_loadu_ps(_interpolants.m_varyings[6]);
+	__m256 const g = _mm256_loadu_ps(_interpolants.m_varyings[7]);
+	__m256 const b = _mm256_setzero_ps();
+	__m256 const a = _mm256_setzero_ps();
 	sr::simdutil::RGBA32SoA_To_RGBA8AoS(r, g, b, a, o_texels);
 }
 

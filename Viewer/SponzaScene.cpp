@@ -10,7 +10,7 @@ namespace sr
 // hack as a global for now.
 static SponzaScene::Constants g_constants;
 
-static void SponzaShader(void const* _uniforms, float const* _varyings, uint32_t o_texels[8], uint32_t _execMask)
+static void SponzaShader(void const* _uniforms, Interpolants const& _interpolants, uint32_t o_texels[8], uint32_t _execMask)
 {
 	sr::Tex::TextureData* tex = (sr::Tex::TextureData*)_uniforms;
 
@@ -20,8 +20,22 @@ static void SponzaShader(void const* _uniforms, float const* _varyings, uint32_t
 		return;
 	}
 
-	sr::shader::OBJVaryings const objVaryings = sr::shader::UnpackOBJVaryings(_varyings);
-	sr::shader::Derivatives const derivs = sr::shader::UnpackDerivatives(_varyings);
+	sr::shader::OBJVaryings objVaryings;
+	sr::shader::Derivatives derivs;
+
+	objVaryings.pos_x = _mm256_loadu_ps(_interpolants.m_varyings[0]);
+	objVaryings.pos_y = _mm256_loadu_ps(_interpolants.m_varyings[1]);
+	objVaryings.pos_z = _mm256_loadu_ps(_interpolants.m_varyings[2]);
+	objVaryings.norm_x = _mm256_loadu_ps(_interpolants.m_varyings[3]);
+	objVaryings.norm_y = _mm256_loadu_ps(_interpolants.m_varyings[4]);
+	objVaryings.norm_z = _mm256_loadu_ps(_interpolants.m_varyings[5]);
+	objVaryings.u = _mm256_loadu_ps(_interpolants.m_varyings[6]);
+	objVaryings.v = _mm256_loadu_ps(_interpolants.m_varyings[7]);
+
+	derivs.dudx = _mm256_loadu_ps(_interpolants.m_dudx);
+	derivs.dudy = _mm256_loadu_ps(_interpolants.m_dudy);
+	derivs.dvdx = _mm256_loadu_ps(_interpolants.m_dvdx);
+	derivs.dvdy = _mm256_loadu_ps(_interpolants.m_dvdy);
 
 	__m256 radiance[3];
 
@@ -50,10 +64,9 @@ static void SponzaShader(void const* _uniforms, float const* _varyings, uint32_t
 		__m256 const pToL_z = _mm256_sub_ps(lightPos_z, objVaryings.pos_z);
 
 		__m256 const distSq = simdutil::Dot3SoA(pToL_x, pToL_y, pToL_z, pToL_x, pToL_y, pToL_z);
-		__m256 const dist = _mm256_sqrt_ps(distSq);
-		__m256 const recipDist = _mm256_rcp_ps(dist);
+		__m256 const recipDist = _mm256_rsqrt_ps(distSq);
+		__m256 const dist = _mm256_rcp_ps(recipDist);
 	
-		
 		__m256 const l_x = _mm256_mul_ps(pToL_x, recipDist);
 		__m256 const l_y = _mm256_mul_ps(pToL_y, recipDist);
 		__m256 const l_z = _mm256_mul_ps(pToL_z, recipDist);
