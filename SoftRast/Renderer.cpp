@@ -266,6 +266,10 @@ void RenderContext::EndFrame()
 				{
 					ThreadBin& bin = m_binner.LookupThreadBin(threadIdx, binX, binY);
 					anyTris |= bin.m_numChunks != 0;
+					if (anyTris)
+					{
+						break;
+					}
 				}
 
 				if (anyTris)
