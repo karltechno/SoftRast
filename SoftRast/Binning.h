@@ -12,7 +12,7 @@ namespace sr
 
 struct DrawCall;
 
-static uint32_t const c_trisPerBinChunk = 64;
+static uint32_t const c_trisPerBinChunk = 32;
 static uint32_t const c_maxThreadBinChunks = 512;
 
 struct BinChunk
