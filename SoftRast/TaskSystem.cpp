@@ -27,7 +27,7 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 	m_numWorkers = _numWorkers;
 
 	// including main thread
-	m_allocators = new ThreadScratchAllocator[TotalThreadsIncludingMainThread()];
+	m_allocators = new PaddedScratchAllocator[TotalThreadsIncludingMainThread()];
 
 	for (uint32_t i = 0; i < TotalThreadsIncludingMainThread(); ++i)
 	{
@@ -92,12 +92,14 @@ void TaskSystem::InitFromMainThread(uint32_t const _numWorkers)
 
 void TaskSystem::WaitAndShutdown()
 {
+	while (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_acquire) > 0)
+	{
+		TryRunOnePacket_NoLock();
+	}
+
 	std::atomic_store_explicit(&m_keepRunning, 0, std::memory_order_relaxed);
 
-	for (uint32_t i = 0; i < m_numWorkers; ++i)
-	{
-		m_queueSignal.Signal();
-	}
+	m_condVar.notify_all();
 
 	for (uint32_t i = 0; i < m_numWorkers; ++i)
 	{
@@ -120,7 +122,7 @@ void TaskSystem::PushTask(Task* _task)
 {
 	uint32_t totalTasks = 0;
 	{
-		kt::ScopedLock<kt::Mutex> lk(m_queueMutex);
+		std::lock_guard<std::mutex> lk(m_mutex);
 
 		// split up task
 		uint32_t lastEnd = 0;
@@ -155,10 +157,7 @@ void TaskSystem::PushTask(Task* _task)
 		KT_ASSERT(totalTasks == tasksPushed);
 	}
 
-	for (uint32_t i = 0; i < kt::Min(m_numWorkers, totalTasks); ++i)
-	{
-		m_queueSignal.Signal();
-	}
+	m_condVar.notify_all();
 }
 
 void TaskSystem::SyncAndWaitForAll()
@@ -183,7 +182,7 @@ void TaskSystem::WaitForCounter(std::atomic<uint32_t>* _counter)
 	MICROPROFILE_SCOPEI("TaskSystem", "IDLE WAIT FOR COUNTER", MP_RED);
 	while (std::atomic_load_explicit(_counter, std::memory_order_acquire) > 0)
 	{
-		// dumb spin
+		// dumb spin, todo: semaphore wait?
 		_mm_pause();
 	}
 }
@@ -212,17 +211,33 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 {
 	while (std::atomic_load_explicit(&m_keepRunning, std::memory_order_acquire))
 	{
+		std::unique_lock<std::mutex> lk(m_mutex);
+		TaskPacket packet;
 		{
 			MICROPROFILE_SCOPEI("TaskSystem", "IDLE", MP_RED);
-			m_queueSignal.Wait();
+			m_condVar.wait(lk, [this]() 
+			{
+				return std::atomic_load_explicit(&m_keepRunning, std::memory_order_acquire) == 0 
+						   || std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_acquire) > 0; 
+			});
 		}
 
-		std::atomic_fetch_add_explicit(&m_numActiveWorkers, 1, std::memory_order_acquire);
+		if (TryPopPacket_WithLock(packet))
+		{
+			std::atomic_fetch_add_explicit(&m_numActiveWorkers, 1, std::memory_order_acquire);
 
-		while(TryRunOnePacket_NoLock()) {}
+			lk.unlock();
+			packet.m_task->m_fn(packet.m_task, tls_threadIndex, packet.m_begin, packet.m_end);
+			if (packet.m_task->m_taskCounter)
+			{
+				std::atomic_fetch_sub_explicit(packet.m_task->m_taskCounter, 1, std::memory_order_release);
+			}
+			lk.lock();
+			std::atomic_fetch_sub_explicit(&m_numActiveWorkers, 1, std::memory_order_release);
+		}
 
-		std::atomic_fetch_sub_explicit(&m_numActiveWorkers, 1, std::memory_order_release);
 	}
+	MicroProfileOnThreadExit();
 }
 
 
@@ -231,15 +246,9 @@ bool TaskSystem::TryRunOnePacket_NoLock()
 	TaskPacket packet;
 	bool popped = false;
 	{
-		kt::ScopedLock<kt::Mutex> mt(m_queueMutex);
+		std::lock_guard<std::mutex> mt(m_mutex);
 
-		if (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_relaxed))
-		{
-			packet = m_packets[m_queueTail];
-			m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
-			std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
-			popped = true;
-		}
+		popped = TryPopPacket_WithLock(packet);
 	}
 
 	if (popped)
@@ -252,6 +261,19 @@ bool TaskSystem::TryRunOnePacket_NoLock()
 	}
 
 	return popped;
+}
+
+bool TaskSystem::TryPopPacket_WithLock(TaskPacket& o_packet)
+{
+	if (std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_relaxed))
+	{
+		o_packet = m_packets[m_queueTail];
+		m_queueTail = (m_queueTail + 1) & QUEUE_MASK;
+		std::atomic_fetch_sub_explicit(&m_numEntriesInQueue, 1, std::memory_order_relaxed);
+		return true;
+	}
+
+	return false;
 }
 
 }

@@ -1,5 +1,7 @@
 #pragma once
 #include <stdint.h>
+#include <mutex>
+#include <condition_variable>
 
 #include "kt/LinearAllocator.h"
 #include "kt/Array.h"
@@ -92,8 +94,12 @@ private:
 	void WorkerLoop(uint32_t _threadId);
 
 	bool TryRunOnePacket_NoLock();
+	bool TryPopPacket_WithLock(TaskPacket& o_packet);
 
-	ThreadScratchAllocator* m_allocators = nullptr;
+	// Align to cache line to avoid false sharing
+	struct alignas(64) PaddedScratchAllocator : ThreadScratchAllocator {};
+
+	PaddedScratchAllocator* m_allocators = nullptr;
 
 	kt::Thread* m_threads = nullptr;
 	uint32_t m_numWorkers = 0;
@@ -105,8 +111,8 @@ private:
 	std::atomic<uint32_t> m_numEntriesInQueue;
 
 	// Todo: lock free
-	kt::Mutex m_queueMutex;
-	kt::Event m_queueSignal;
+	std::mutex m_mutex;
+	std::condition_variable m_condVar;
 
 	std::atomic<uint32_t> m_keepRunning;
 
