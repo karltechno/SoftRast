@@ -156,6 +156,8 @@ public:
 	RenderContext();
 	~RenderContext();
 
+	void Shutdown();
+
 	void DrawIndexed(DrawCall const& _call);
 
 	void ClearFrameBuffer(FrameBuffer& _buffer, uint32_t _color = 0x00000000, bool _clearColour = true, bool _clearDepth = true);

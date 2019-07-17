@@ -151,6 +151,10 @@ RenderContext::RenderContext()
 
 RenderContext::~RenderContext()
 {
+}
+
+void RenderContext::Shutdown()
+{
 	m_taskSystem.WaitAndShutdown();
 }
 

@@ -45,7 +45,7 @@ int main(int argc, char** argv)
 	MicroProfileSetEnableAllGroups(true);
 	MicroProfileSetForceMetaCounters(true);
 	MicroProfileStartContextSwitchTrace();
-	
+
 
 	while (!window.WantsQuit())
 	{
@@ -53,7 +53,7 @@ int main(int argc, char** argv)
 		sr::input::Tick((float)frameTime.Seconds());
 
 		renderCtx.BeginFrame();
-	
+
 		scene->Update(renderCtx, framebuffer, frameTime.Seconds());
 
 		renderCtx.EndFrame();
@@ -83,10 +83,10 @@ int main(int argc, char** argv)
 		MicroProfileFlip(0);
 	}
 
+	renderCtx.Shutdown();
+
 	delete scene;
 	sr::input::Shutdown();
 
 	MicroProfileShutdown();
-
-	
 }
