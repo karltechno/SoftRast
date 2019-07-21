@@ -47,7 +47,7 @@ void SimpleModelScene::Update(RenderContext& _ctx, FrameBuffer& _fb, float _dt)
 		call.m_positionBuffer.m_num = mesh.m_vertexData.Size();
 
 		call.m_indexBuffer.m_ptr = mesh.m_indexData.Data();
-		call.m_indexBuffer.m_num = mesh.m_numIndicies;
+		call.m_indexBuffer.m_num = mesh.m_numIndices;
 		call.m_indexBuffer.m_stride = mesh.m_indexType == sr::IndexType::u16 ? sizeof(uint16_t) : sizeof(uint32_t);
 
 		if (mesh.m_matIdx < m_model.m_materials.Size())

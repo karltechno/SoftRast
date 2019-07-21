@@ -34,7 +34,7 @@ struct Mesh
 	kt::Array<uint8_t> m_indexData;
 
 	IndexType m_indexType = IndexType::u16;
-	uint32_t m_numIndicies = 0;
+	uint32_t m_numIndices = 0;
 
 	kt::Array<Vertex> m_vertexData;
 

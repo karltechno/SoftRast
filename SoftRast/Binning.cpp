@@ -164,32 +164,32 @@ static void ClipPlane(ClipBuffer& _buffer, uint32_t _clipPlaneIdx)
 	_buffer.inputIdx ^= 1;
 }
 
-KT_FORCEINLINE static void FetchIndicies(DrawCall const& _call, uint32_t _triIdx, uint32_t o_indicies[3])
+KT_FORCEINLINE static void FetchIndices(DrawCall const& _call, uint32_t _triIdx, uint32_t o_indices[3])
 {
 	switch (_call.m_indexBuffer.m_stride)
 	{
 		case 1:
 		{
 			uint8_t* ptr = (uint8_t*)_call.m_indexBuffer.m_ptr;
-			o_indicies[0] = ptr[_triIdx * 3];
-			o_indicies[1] = ptr[_triIdx * 3 + 1];
-			o_indicies[2] = ptr[_triIdx * 3 + 2];
+			o_indices[0] = ptr[_triIdx * 3];
+			o_indices[1] = ptr[_triIdx * 3 + 1];
+			o_indices[2] = ptr[_triIdx * 3 + 2];
 		} break;
 
 		case 2:
 		{
 			uint16_t* ptr = (uint16_t*)_call.m_indexBuffer.m_ptr;
-			o_indicies[0] = ptr[_triIdx * 3];
-			o_indicies[1] = ptr[_triIdx * 3 + 1];
-			o_indicies[2] = ptr[_triIdx * 3 + 2];
+			o_indices[0] = ptr[_triIdx * 3];
+			o_indices[1] = ptr[_triIdx * 3 + 1];
+			o_indices[2] = ptr[_triIdx * 3 + 2];
 		} break;
 
 		case 4:
 		{
 			uint32_t* ptr = (uint32_t*)_call.m_indexBuffer.m_ptr;
-			o_indicies[0] = ptr[_triIdx * 3];
-			o_indicies[1] = ptr[_triIdx * 3 + 1];
-			o_indicies[2] = ptr[_triIdx * 3 + 2];
+			o_indices[0] = ptr[_triIdx * 3];
+			o_indices[1] = ptr[_triIdx * 3 + 1];
+			o_indices[2] = ptr[_triIdx * 3 + 2];
 		} break;
 
 		default:
@@ -198,26 +198,26 @@ KT_FORCEINLINE static void FetchIndicies(DrawCall const& _call, uint32_t _triIdx
 		} break;
 	}
 
-	KT_ASSERT(o_indicies[0] < _call.m_positionBuffer.m_num);
-	KT_ASSERT(o_indicies[1] < _call.m_positionBuffer.m_num);
-	KT_ASSERT(o_indicies[2] < _call.m_positionBuffer.m_num);
+	KT_ASSERT(o_indices[0] < _call.m_positionBuffer.m_num);
+	KT_ASSERT(o_indices[1] < _call.m_positionBuffer.m_num);
+	KT_ASSERT(o_indices[2] < _call.m_positionBuffer.m_num);
 }
 
-KT_FORCEINLINE static void FetchPositions(DrawCall const& _call, uint32_t const i_indicies[3], kt::Vec4 o_positions[3])
+KT_FORCEINLINE static void FetchPositions(DrawCall const& _call, uint32_t const i_indices[3], kt::Vec4 o_positions[3])
 {
 	uint8_t* buff = (uint8_t*)_call.m_positionBuffer.m_ptr;
-	o_positions[0] = kt::Vec4(*(kt::Vec3*)(buff + i_indicies[0] * _call.m_positionBuffer.m_stride), 1.0f);
-	o_positions[1] = kt::Vec4(*(kt::Vec3*)(buff + i_indicies[1] * _call.m_positionBuffer.m_stride), 1.0f);
-	o_positions[2] = kt::Vec4(*(kt::Vec3*)(buff + i_indicies[2] * _call.m_positionBuffer.m_stride), 1.0f);
+	o_positions[0] = kt::Vec4(*(kt::Vec3*)(buff + i_indices[0] * _call.m_positionBuffer.m_stride), 1.0f);
+	o_positions[1] = kt::Vec4(*(kt::Vec3*)(buff + i_indices[1] * _call.m_positionBuffer.m_stride), 1.0f);
+	o_positions[2] = kt::Vec4(*(kt::Vec3*)(buff + i_indices[2] * _call.m_positionBuffer.m_stride), 1.0f);
 }
 
-KT_FORCEINLINE static void FetchAttribPointers(DrawCall const& _call, uint32_t const i_indicies[3], float const* (&o_attribs)[3])
+KT_FORCEINLINE static void FetchAttribPointers(DrawCall const& _call, uint32_t const i_indices[3], float const* (&o_attribs)[3])
 {
 	uint8_t* buff = (uint8_t*)_call.m_attributeBuffer.m_ptr;
 
-	o_attribs[0] = (float*)(buff + i_indicies[0] * _call.m_attributeBuffer.m_stride);
-	o_attribs[1] = (float*)(buff + i_indicies[1] * _call.m_attributeBuffer.m_stride);
-	o_attribs[2] = (float*)(buff + i_indicies[2] * _call.m_attributeBuffer.m_stride);
+	o_attribs[0] = (float*)(buff + i_indices[0] * _call.m_attributeBuffer.m_stride);
+	o_attribs[1] = (float*)(buff + i_indices[1] * _call.m_attributeBuffer.m_stride);
+	o_attribs[2] = (float*)(buff + i_indices[2] * _call.m_attributeBuffer.m_stride);
 }
 
 static BinChunk& GetOrCreateBinForDrawCall(ThreadScratchAllocator& _alloc, BinContext& _ctx, ThreadBin& _bin, DrawCall const& _call)
@@ -468,11 +468,11 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 	{
 		KT_ASSERT(triIdx < _drawCall.m_indexBuffer.m_num);
 
-		uint32_t indicies[3];
+		uint32_t indices[3];
 		kt::Vec4 vtx[3];
 
-		FetchIndicies(_drawCall, triIdx, indicies);
-		FetchPositions(_drawCall, indicies, vtx);
+		FetchIndices(_drawCall, triIdx, indices);
+		FetchPositions(_drawCall, indices, vtx);
 
 		vtx[0] = _drawCall.m_mvp * vtx[0];
 		vtx[1] = _drawCall.m_mvp * vtx[1];
@@ -489,7 +489,7 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 		if (maskOr == 0)
 		{
 			float const* originalAttribs[3];
-			FetchAttribPointers(_drawCall, indicies, originalAttribs);
+			FetchAttribPointers(_drawCall, indices, originalAttribs);
 			BinTransformedAndClippedTri(_ctx, _alloc, _threadIdx, vtx[0], vtx[1], vtx[2], originalAttribs, _drawCall);
 			continue;
 		}
@@ -500,7 +500,7 @@ void BinTrisEntry(BinContext& _ctx, ThreadScratchAllocator& _alloc, uint32_t _th
 		}
 
 		float const* originalAttribs[3];
-		FetchAttribPointers(_drawCall, indicies, originalAttribs);
+		FetchAttribPointers(_drawCall, indices, originalAttribs);
 
 		ClipBuffer buf;
 

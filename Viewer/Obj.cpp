@@ -25,7 +25,7 @@ void Serialize(ISerializer* _s, sr::Obj::Mesh& _mesh)
 {
 	Serialize(_s, _mesh.m_indexType);
 	Serialize(_s, _mesh.m_indexData);
-	Serialize(_s, _mesh.m_numIndicies);
+	Serialize(_s, _mesh.m_numIndices);
 	Serialize(_s, _mesh.m_vertexData);
 	Serialize(_s, _mesh.m_matIdx);
 }
@@ -63,7 +63,7 @@ template <typename T>
 static void FlipMeshWinding(Mesh& _m, void* _idxBuff)
 {
 	T* buff = (T*)_idxBuff;
-	for (uint32_t i = 0; i < _m.m_numIndicies; i += 3)
+	for (uint32_t i = 0; i < _m.m_numIndices; i += 3)
 	{
 		kt::Swap(buff[i + 1], buff[i + 2]);
 	}
@@ -73,7 +73,7 @@ struct MeshParserState
 {
 	MeshParserState(kt::IAllocator* _tempAllocator)
 		: m_faceMap(_tempAllocator)
-		, m_tempVerticies(_tempAllocator)
+		, m_tempVertices(_tempAllocator)
 		, m_tempIndexBuffer(_tempAllocator)
 		, m_tempPos(_tempAllocator)
 		, m_tempUv(_tempAllocator)
@@ -84,19 +84,19 @@ struct MeshParserState
 		m_tempUv.Reserve(2048);
 		m_tempNormal.Reserve(2048);
 		m_tempIndexBuffer.Reserve(2048);
-		m_tempVerticies.Reserve(2048);
+		m_tempVertices.Reserve(2048);
 	}
 
 	void FinalizeMesh(Mesh* m, uint32_t _matIdx)
 	{
 		m->Clear();
 		m->m_matIdx = _matIdx;
-		if (!m_tempVerticies.Size())
+		if (!m_tempVertices.Size())
 		{
 			return;
 		}
 
-		m->m_indexType = m_tempVerticies.Size() > UINT16_MAX ? IndexType::u32 : IndexType::u16;
+		m->m_indexType = m_tempVertices.Size() > UINT16_MAX ? IndexType::u32 : IndexType::u16;
 
 		if (m->m_indexType == IndexType::u32)
 		{
@@ -113,19 +113,19 @@ struct MeshParserState
 			}
 		}
 
-		m->m_numIndicies = m_tempIndexBuffer.Size();
-		Vertex* vertexWrite = m->m_vertexData.PushBack_Raw(m_tempVerticies.Size());
-		memcpy(vertexWrite, m_tempVerticies.Data(), sizeof(Vertex) * m_tempVerticies.Size());
+		m->m_numIndices = m_tempIndexBuffer.Size();
+		Vertex* vertexWrite = m->m_vertexData.PushBack_Raw(m_tempVertices.Size());
+		memcpy(vertexWrite, m_tempVertices.Data(), sizeof(Vertex) * m_tempVertices.Size());
 
 		m_faceMap.Clear();
-		m_tempVerticies.Clear();
+		m_tempVertices.Clear();
 		m_tempIndexBuffer.Clear();
 	}
 
-	// data is index into m_tempVerticies
+	// data is index into m_tempVertices
 	kt::HashMap<TempFace, uint32_t> m_faceMap;
 
-	kt::Array<Vertex> m_tempVerticies;
+	kt::Array<Vertex> m_tempVertices;
 	kt::Array<uint32_t> m_tempIndexBuffer;
 
 	kt::Array<kt::Vec3> m_tempPos;
@@ -154,11 +154,11 @@ static char* StripWhiteSpaceAndNewLine(char* _buff)
 	return ret;
 }
 
-static int32_t FixupFaceIdx(int32_t _idx, int32_t _totalVerticies)
+static int32_t FixupFaceIdx(int32_t _idx, int32_t _totalVertices)
 {
 	if (!_idx) return 0;
 
-	return _idx < 0 ? _totalVerticies + _idx : _idx - 1;
+	return _idx < 0 ? _totalVertices + _idx : _idx - 1;
 }
 
 static bool ParseFace(MeshParserState& _parserState, char const* _line)
@@ -166,9 +166,9 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 	char const* p = _line + 2;
 
 	// 6 so we can expand quad into 2 tris
-	int32_t posIndicies[6] = {};
-	int32_t texIndicies[6] = {};
-	int32_t normIndicies[6] = {};
+	int32_t posIndices[6] = {};
+	int32_t texIndices[6] = {};
+	int32_t normIndices[6] = {};
 
 	int32_t numFaceVerts = 0;
 
@@ -200,9 +200,9 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 
 		int32_t vertIdx = numFaceVerts;
 
-		parseNum(posIndicies[vertIdx]);
+		parseNum(posIndices[vertIdx]);
 
-		if (posIndicies[vertIdx] == 0)
+		if (posIndices[vertIdx] == 0)
 		{
 			break;
 		}
@@ -219,35 +219,35 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 		{
 			++p;
 			// Missing tex idx
-			parseNum(normIndicies[vertIdx]);
+			parseNum(normIndices[vertIdx]);
 			continue;
 		}
 
-		parseNum(texIndicies[vertIdx]);
+		parseNum(texIndices[vertIdx]);
 
 		if (*p != '/')
 		{
 			continue;
 		}
 		++p;
-		parseNum(normIndicies[vertIdx]);
+		parseNum(normIndices[vertIdx]);
 	}
 
 	// triangulate the quad
 	if (numFaceVerts == 4)
 	{
 		// dumb triangulation
-		posIndicies[5] = posIndicies[3];
-		normIndicies[5] = normIndicies[3];
-		texIndicies[5] = texIndicies[3];
+		posIndices[5] = posIndices[3];
+		normIndices[5] = normIndices[3];
+		texIndices[5] = texIndices[3];
 
-		posIndicies[3] = posIndicies[0];
-		normIndicies[3] = normIndicies[0];
-		texIndicies[3] = texIndicies[0];
+		posIndices[3] = posIndices[0];
+		normIndices[3] = normIndices[0];
+		texIndices[3] = texIndices[0];
 	
-		posIndicies[4] = posIndicies[2];
-		normIndicies[4] = normIndicies[2];
-		texIndicies[4] = texIndicies[2];
+		posIndices[4] = posIndices[2];
+		normIndices[4] = normIndices[2];
+		texIndices[4] = texIndices[2];
 		numFaceVerts = 6;
 	}
 
@@ -255,9 +255,9 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 	TempFace tempFace;
 	for (int32_t vId = 0; vId < numFaceVerts; ++vId)
 	{
-		tempFace.posIdx = FixupFaceIdx(posIndicies[vId], (int32_t)_parserState.m_tempPos.Size());
-		tempFace.uvIdx = FixupFaceIdx(texIndicies[vId], (int32_t)_parserState.m_tempUv.Size());
-		tempFace.normIdx = FixupFaceIdx(normIndicies[vId], (int32_t)_parserState.m_tempNormal.Size());
+		tempFace.posIdx = FixupFaceIdx(posIndices[vId], (int32_t)_parserState.m_tempPos.Size());
+		tempFace.uvIdx = FixupFaceIdx(texIndices[vId], (int32_t)_parserState.m_tempUv.Size());
+		tempFace.normIdx = FixupFaceIdx(normIndices[vId], (int32_t)_parserState.m_tempNormal.Size());
 
 		kt::HashMap<TempFace, uint32_t>::Iterator it = _parserState.m_faceMap.Find(tempFace);
 		if (it != _parserState.m_faceMap.End())
@@ -266,8 +266,8 @@ static bool ParseFace(MeshParserState& _parserState, char const* _line)
 		}
 		else
 		{
-			uint32_t const idx = _parserState.m_tempVerticies.Size();
-			Vertex* v = _parserState.m_tempVerticies.PushBack_Raw();
+			uint32_t const idx = _parserState.m_tempVertices.Size();
+			Vertex* v = _parserState.m_tempVertices.PushBack_Raw();
 			_parserState.m_tempIndexBuffer.PushBack(idx);
 
 			_parserState.m_faceMap[tempFace] = idx;
@@ -478,7 +478,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t con
 
 			case 'g':
 			{
-				if (parserState.m_tempVerticies.Size())
+				if (parserState.m_tempVertices.Size())
 				{
 					parserState.FinalizeMesh(&m_meshes.PushBack(), curMatIdx);
 				}
@@ -530,7 +530,7 @@ bool Model::Load(char const* _path, kt::IAllocator* _tempAllocator, uint32_t con
 		}
 	}
 
-	if (parserState.m_tempVerticies.Size())
+	if (parserState.m_tempVertices.Size())
 	{
 		parserState.FinalizeMesh(&m_meshes.PushBack(), curMatIdx);
 	}
