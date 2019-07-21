@@ -527,30 +527,20 @@ void RasterAndShadeBin(ThreadRasterCtx const& _ctx)
 	// sort draw calls
 	uint32_t numChunks = 0;
 
+	BinChunk** sortedChunks = (BinChunk**)threadAllocator.Align(KT_ALIGNOF(BinChunk*));
+
 	// gather draw calls from all threads
 	for (uint32_t threadBinIdx = 0; threadBinIdx < _ctx.m_binner->m_numThreads; ++threadBinIdx)
 	{
 		ThreadBin& bin = _ctx.m_binner->LookupThreadBin(threadBinIdx, _ctx.m_tileX, _ctx.m_tileY);
-
+		threadAllocator.Alloc(bin.m_numChunks * sizeof(BinChunk*));
+		memcpy(sortedChunks + numChunks, bin.m_binChunks, bin.m_numChunks * sizeof(BinChunk*));
 		numChunks += bin.m_numChunks;
 	}
 
 	if (!numChunks)
 	{
 		return;
-	}
-
-	BinChunk** sortedChunks = (BinChunk**)KT_ALLOCA(sizeof(BinChunk*) * numChunks);
-
-	{
-		uint32_t chunkIdx = 0;
-		for (uint32_t threadBinIdx = 0; threadBinIdx < _ctx.m_binner->m_numThreads; ++threadBinIdx)
-		{
-			ThreadBin& bin = _ctx.m_binner->LookupThreadBin(threadBinIdx, _ctx.m_tileX, _ctx.m_tileY);
-			memcpy(sortedChunks + chunkIdx, bin.m_binChunks, bin.m_numChunks * sizeof(BinChunk*));
-			chunkIdx += bin.m_numChunks;
-			KT_ASSERT(chunkIdx <= numChunks);
-		}
 	}
 
 	BinChunk** radixTemp = (BinChunk**)KT_ALLOCA(sizeof(BinChunk**) * numChunks);
