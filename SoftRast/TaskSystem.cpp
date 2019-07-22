@@ -209,10 +209,10 @@ void TaskSystem::ResetAllocators()
 
 void TaskSystem::WorkerLoop(uint32_t _threadId)
 {
+	std::unique_lock<std::mutex> lk(m_mutex);
+
 	while (std::atomic_load_explicit(&m_keepRunning, std::memory_order_acquire))
 	{
-		std::unique_lock<std::mutex> lk(m_mutex);
-		TaskPacket packet;
 		{
 			MICROPROFILE_SCOPEI("TaskSystem", "IDLE", MP_RED);
 			m_condVar.wait(lk, [this]() 
@@ -221,6 +221,8 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 						   || std::atomic_load_explicit(&m_numEntriesInQueue, std::memory_order_acquire) > 0; 
 			});
 		}
+
+		TaskPacket packet;
 
 		if (TryPopPacket_WithLock(packet))
 		{
@@ -237,6 +239,9 @@ void TaskSystem::WorkerLoop(uint32_t _threadId)
 		}
 
 	}
+
+	lk.unlock();
+
 	MicroProfileOnThreadExit();
 }
 
