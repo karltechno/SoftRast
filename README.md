@@ -1,11 +1,14 @@
 # SoftRast
-Hobby software rasterizer, requires a CPU with AVX2/FMA.
+Hobby real-time software rasterizer, requires a CPU with AVX2/FMA.
+
+[Blog post (part 1/n) with some info on this project/optimisations/interesting bugs etc.](https://karltechno.com/posts/software-rasterizer-pt1/)
 
 ![Crytek Sponza](https://i.imgur.com/CE8z2bV.jpg)
 
 The goal of the project is to learn more about the graphics pipeline, software rendering and SIMD programming. 
 
 ## Features:
+- SIMD (AVX2) rasterization/shading.
 - Perspective correct interpolation of attributes.
 - Fixed point rasterization with 8 bits of sub pixel precision.
 - Texture sampling with billinear interpolation and tiled/morton order textures.
@@ -15,8 +18,6 @@ The goal of the project is to learn more about the graphics pipeline, software r
 - Mip mapping using screen space partial derivatives.
 - No runtime memory allocation (all allocations go through thread local linear allocators with a large upfront allocation).
 - Simple OBJ model loader. Creates a binary out of the model and textures for instantaneous loading after the first run.
-
-For a rough performance indication as of writing this (although there are various optimizations yet to do) I can render Crytek Sponza with diffuse texture mapping with each frame taking between 10-26ms depnding on where the camera is looking (average around 16ms). This is on an i7 4770k with 8 threads.
 
 Various improvements are in todo.txt.
 
