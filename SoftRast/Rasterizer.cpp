@@ -110,9 +110,10 @@ static uint64_t ComputeBlockMask8x8_DepthOnly
 
 	uint64_t mask8x8 = 0;
 
+	float* depthPtr = _depth->m_depth + (_xTileRelative + _yTileRelative * Config::c_binWidth);
+
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
 		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
 
 		__m256 depthCmpMask = DepthCmpMask(depthGather, zOverW);
@@ -125,6 +126,7 @@ static uint64_t ComputeBlockMask8x8_DepthOnly
 		mask8x8 |= (laneMask << (i * 8ull));
 
 		zOverW = _mm256_add_ps(zOverW, _zOverW.dy);
+		depthPtr += Config::c_binWidth;
 	}
 	return mask8x8;
 }
@@ -156,18 +158,19 @@ static uint64_t ComputeBlockMask8x8
 		edges[i] = _mm256_add_epi32(_edges.tileTopLeftEdge[i], _mm256_add_epi32(_mm256_mullo_epi32(yTileSimd, _edges.dx[i]), _mm256_mullo_epi32(xTileSimd, _edges.dy[i])));
 	}
 
-	__m256i const signBit = _mm256_set1_epi32(0x80000000);
+	float* depthPtr = _depth->m_depth + (_xTileRelative + _yTileRelative * Config::c_binWidth);
 
 	for (uint32_t i = 0; i < 8; ++i)
 	{
-		__m256i const edgeMask = _mm256_xor_si256(_mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]), signBit);
+		__m256i const edgeMask = _mm256_or_si256(_mm256_or_si256(edges[0], edges[1]), edges[2]);
 
 		// test Z
-		float* depthPtr = _depth->m_depth + (_xTileRelative + (_yTileRelative + i) * Config::c_binWidth);
 		__m256 const depthGather = _mm256_loadu_ps(depthPtr);
 
 		__m256 depthCmpMask = DepthCmpMask(depthGather, zOverW);
-		depthCmpMask = _mm256_and_ps(_mm256_castsi256_ps(edgeMask), depthCmpMask);
+
+		// ANDNOT here, we OR edge equation bits together but we want true when edgeMask >= 0 and sign bit = mask bit.
+		depthCmpMask = _mm256_andnot_ps(_mm256_castsi256_ps(edgeMask), depthCmpMask);
 
 		uint64_t const laneMask = _mm256_movemask_ps(depthCmpMask);
 
@@ -181,6 +184,8 @@ static uint64_t ComputeBlockMask8x8
 		edges[2] = _mm256_add_epi32(edges[2], _edges.dx[2]);
 
 		zOverW = _mm256_add_ps(zOverW, _zOverW.dy);
+
+		depthPtr += Config::c_binWidth;
 	}
 
 	return mask8x8;
