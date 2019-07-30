@@ -9,6 +9,8 @@
 #include "stb_image.h"
 #include "stb_image_resize.h"
 
+#define SR_TILE_TEXTURES (1)
+
 namespace kt
 {
 
@@ -70,6 +72,7 @@ constexpr uint32_t c_texTileMask = c_texTileSize - 1;
 
 static void TileTexture(uint8_t const* _src, uint8_t* _dest, uint32_t const dimX_noPad, uint32_t const dimY_noPad)
 {
+#if SR_TILE_TEXTURES
 	uint32_t const mipTileWidth = uint32_t(kt::AlignUp(dimX_noPad, c_texTileSize)) >> c_texTileSizeLog2;
 
 	// Naive tile+swizzling of texture. 
@@ -92,6 +95,9 @@ static void TileTexture(uint8_t const* _src, uint8_t* _dest, uint32_t const dimX
 			memcpy(_dest + tiledOffs * 4, _src + linearOffs * 4, 4);
 		}
 	}
+#else
+	memcpy(_dest, _src, dimX_noPad * dimY_noPad * sizeof(uint32_t));
+#endif
 }
 
 void TextureData::CreateFromFile(char const* _file)
@@ -157,8 +163,13 @@ void TextureData::CreateFromRGBA8(uint8_t const* _texels, uint32_t _width, uint3
 		m_mipOffsets[mipIdx] = curMipDataOffset;
 
 		// Align the offset to account for tiling
+#if SR_TILE_TEXTURES
 		uint32_t const mipDimX_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[0], c_texTileSize));
 		uint32_t const mipDimY_tilePad = uint32_t(kt::AlignUp(mipInfos[mipIdx].m_dims[1], c_texTileSize));
+#else
+		uint32_t const mipDimX_tilePad = mipInfos[mipIdx].m_dims[0];
+		uint32_t const mipDimY_tilePad = mipInfos[mipIdx].m_dims[1];
+#endif
 
 		curMipDataOffset += mipDimX_tilePad * mipDimY_tilePad * m_bytesPerPixel;
 	}
@@ -248,40 +259,51 @@ static void GatherQuadsAndInterpolate
 )
 {
 	// Compute the tile offsets.
-	__m256i const tileX0 = _mm256_srli_epi32(_x0, c_texTileSizeLog2);
-	__m256i const tileY0 = _mm256_srli_epi32(_y0, c_texTileSizeLog2);
-	__m256i const tileX1 = _mm256_srli_epi32(_x1, c_texTileSizeLog2);
-	__m256i const tileY1 = _mm256_srli_epi32(_y1, c_texTileSizeLog2);
-
-	__m256i const c_texTileMaskAvx = _mm256_set1_epi32(c_texTileMask);
-
-	// Compute the inner-tile coordinates.
-	__m256i const inTileAddressX0 = _mm256_and_si256(_x0, c_texTileMaskAvx);
-	__m256i const inTileAddressY0 = _mm256_and_si256(_y0, c_texTileMaskAvx);
-	__m256i const inTileAddressX1 = _mm256_and_si256(_x1, c_texTileMaskAvx);
-	__m256i const inTileAddressY1 = _mm256_and_si256(_y1, c_texTileMaskAvx);
-
-	// TODO: Broken for non pow2 textures (we assert not supporting those though!)
-	__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
-	__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
-
-	// Compute the linear offset to the start of each tile (not including bytes per pixel).
-	__m256i const offs_x0y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0));
-	__m256i const offs_x1y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1));
-	__m256i const offs_x0y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0));
-	__m256i const offs_x1y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX1));
-
 	KT_ALIGNAS(32) uint32_t morton_x0y0[8];
 	KT_ALIGNAS(32) uint32_t morton_x1y0[8];
 	KT_ALIGNAS(32) uint32_t morton_x1y1[8];
 	KT_ALIGNAS(32) uint32_t morton_x0y1[8];
 
-	// Add offset to morton encoded inner tile coordinates, multiply by 4 for bytes per pixel.
-	// This is the final pixel offset.
-	_mm256_store_si256((__m256i*)morton_x0y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y0, MortonEncode_AVX(inTileAddressX0, inTileAddressY0)), 2));
-	_mm256_store_si256((__m256i*)morton_x1y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y0, MortonEncode_AVX(inTileAddressX1, inTileAddressY0)), 2));
-	_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
-	_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y1, MortonEncode_AVX(inTileAddressX0, inTileAddressY1)), 2));
+#if SR_TILE_TEXTURES
+	{
+		__m256i const tileX0 = _mm256_srli_epi32(_x0, c_texTileSizeLog2);
+		__m256i const tileY0 = _mm256_srli_epi32(_y0, c_texTileSizeLog2);
+		__m256i const tileX1 = _mm256_srli_epi32(_x1, c_texTileSizeLog2);
+		__m256i const tileY1 = _mm256_srli_epi32(_y1, c_texTileSizeLog2);
+
+		__m256i const c_texTileMaskAvx = _mm256_set1_epi32(c_texTileMask);
+
+		// Compute the inner-tile coordinates.
+		__m256i const inTileAddressX0 = _mm256_and_si256(_x0, c_texTileMaskAvx);
+		__m256i const inTileAddressY0 = _mm256_and_si256(_y0, c_texTileMaskAvx);
+		__m256i const inTileAddressX1 = _mm256_and_si256(_x1, c_texTileMaskAvx);
+		__m256i const inTileAddressY1 = _mm256_and_si256(_y1, c_texTileMaskAvx);
+
+		// TODO: Broken for non pow2 textures (we assert not supporting those though!)
+		__m256i const texTileSize = _mm256_set1_epi32(c_texTileSize);
+		__m256i const mipTileWidth = _mm256_srli_epi32(_mm256_max_epi32(_mipWidth, texTileSize), c_texTileSizeLog2);
+
+		// Compute the linear offset to the start of each tile (not including bytes per pixel).
+		__m256i const offs_x0y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX0));
+		__m256i const offs_x1y0 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY0, mipTileWidth), tileX1));
+		__m256i const offs_x0y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX0));
+		__m256i const offs_x1y1 = _mm256_mullo_epi32(_mm256_set1_epi32(c_texTileSize * c_texTileSize), _mm256_add_epi32(_mm256_mullo_epi32(tileY1, mipTileWidth), tileX1));
+
+		// Add offset to morton encoded inner tile coordinates, multiply by 4 for bytes per pixel.
+		// This is the final pixel offset.
+		_mm256_store_si256((__m256i*)morton_x0y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y0, MortonEncode_AVX(inTileAddressX0, inTileAddressY0)), 2));
+		_mm256_store_si256((__m256i*)morton_x1y0, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y0, MortonEncode_AVX(inTileAddressX1, inTileAddressY0)), 2));
+		_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x1y1, MortonEncode_AVX(inTileAddressX1, inTileAddressY1)), 2));
+		_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(offs_x0y1, MortonEncode_AVX(inTileAddressX0, inTileAddressY1)), 2));
+	}
+#else
+	{
+		_mm256_store_si256((__m256i*)morton_x0y0, _mm256_slli_epi32(_mm256_add_epi32(_x0, _mm256_mullo_epi32(_y0, _mipWidth)), 2));
+		_mm256_store_si256((__m256i*)morton_x0y1, _mm256_slli_epi32(_mm256_add_epi32(_x0, _mm256_mullo_epi32(_y1, _mipWidth)), 2));
+		_mm256_store_si256((__m256i*)morton_x1y0, _mm256_slli_epi32(_mm256_add_epi32(_x1, _mm256_mullo_epi32(_y0, _mipWidth)), 2));
+		_mm256_store_si256((__m256i*)morton_x1y1, _mm256_slli_epi32(_mm256_add_epi32(_x1, _mm256_mullo_epi32(_y1, _mipWidth)), 2));
+	}
+#endif
 
 	// | denotes ymm reg split. Each row is a ymm reg. 
 	// If we load AoS with stride like this than we can tranpose independent 4x4 sub matrix in registers without cross lane permutes.
