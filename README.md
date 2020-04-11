@@ -1,8 +1,6 @@
 # SoftRast
 Hobby real-time software rasterizer, requires a CPU with AVX2/FMA.
 
-[Blog post (part 1/n) with some info on this project/optimisations/interesting bugs etc.](https://karltechno.com/posts/software-rasterizer-pt1/)
-
 ![Crytek Sponza](https://i.imgur.com/CE8z2bV.jpg)
 
 The goal of the project is to learn more about the graphics pipeline, software rendering and SIMD programming. 
